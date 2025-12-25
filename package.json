@@ -1,0 +1,17 @@
+{
+  "name": "telegrambotpin",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "serverHost.js",
+  "types": "./serverHost.d.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@types/node": "^25.0.3",
+    "grammy": "^1.38.4"
+  }
+}
