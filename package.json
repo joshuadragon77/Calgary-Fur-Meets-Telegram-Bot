@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@types/node": "^25.0.3",
+    "discord.js": "^14.25.1",
     "grammy": "^1.38.4"
   }
 }

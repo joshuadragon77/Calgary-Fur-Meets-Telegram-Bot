@@ -14,17 +14,25 @@
  * Let @joshuadagon77 on telegram know of any problem.
  */
 
+import { AttachmentBuilder, ChatInputCommandInteraction, Client, Collection, Embed, EmbedBuilder, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder, SlashCommandStringOption, type RESTPostAPIChatInputApplicationCommandsJSONBody, type SlashCommandOptionsOnlyBuilder } from "discord.js";
 import { Bot, Context, type CommandContext } from "grammy";
 import { LowLevelJadeDB } from "./modules/jadestores.js";
 import { JadeStruct } from "./modules/jadestruct.js";
 import * as console from "./modules/consolescript.js";
+import { get } from "https";
+import { writeFile } from "fs/promises";
 
-const bot_api_key = "";
+const telegram_bot_api_key = "";
+const discord_bot_api_key = "";
+const client_id = "";
 
-const telegram_bot = new Bot(bot_api_key);
+const telegram_bot = new Bot(telegram_bot_api_key);
+const discord_bot = new Client({intents: [GatewayIntentBits.Guilds]});
 
 let user_context_broadcast_set = false;
 let user_context_broadcast_origin_message: CommandContext<Context> | undefined = undefined;
+
+const rest = new REST().setToken(discord_bot_api_key);
 
 type Meet = {
     planned_date: Date,
@@ -32,12 +40,14 @@ type Meet = {
     pinner: string,
     message_id: number,
     chat_id: number,
-    meet_name: string
+    meet_name: string,
+    meet_info: string,
+    attached_meet_media: Buffer | undefined
 }
 
 (async ()=>{
 
-    let database = new LowLevelJadeDB("./database.db", 400);
+    let database = new LowLevelJadeDB("./database.db", 4096);
 
     await database.open();
 
@@ -79,8 +89,25 @@ type Meet = {
     function get_main_group_chat_id(){
         return system_data.main_group_chat_id;
     }
+    
+    let one_time_code = "";
+
+    function generate_one_time_code(){
+        one_time_code = "";
+
+        for (let i = 0;i<20;i++){
+            one_time_code += String(Math.floor(Math.random() * 10))
+        }
+
+        console.log(`Your one time code is generated here: ${one_time_code}. You can use this to change the main group chat.`);
+    }
+
+    generate_one_time_code();
 
     async function determine_administrator_role(user_id: number, chat_id: number){
+        if (chat_id == 0){
+            return;
+        }
         let chat_administrators = await telegram_bot.api.getChatAdministrators(chat_id);
 
         let administrator_profile = chat_administrators.find((user)=>{
@@ -91,8 +118,8 @@ type Meet = {
     }
 
     await telegram_bot.api.setMyCommands([
-        {command: "pin", description: "Pins the furmeet information to the channel."},
-        {command: "get_upcoming_meets", description: "Get upcoming meets!~"},
+        {command: "pin", description: "Pins the furmeet information to the channel. >_<"},
+        {command: "get_upcoming_meets", description: "Get upcoming furmeets!~"},
         {command: "set_broadcast_channel", description: "Admin Command for setting the broadcasting channel for telegram"},
         {command: "set_main_group_chat", description: "Admin Command for setting the main group chat for telegram"},
         {command: "authorize_pin", description: "Admin Command for authorizing a user to pin stuff! You can specify the username as a parameter!"},
@@ -129,6 +156,26 @@ type Meet = {
         });
     }
 
+    function download_image(image_url: string){
+        return new Promise<Buffer>((accept, reject)=>{
+            get(image_url, (response)=>{
+                let content_size = Number(response.headers["content-length"]);
+                let image_buffer = Buffer.alloc(content_size);
+
+                let write_header = 0;
+
+                response.on("data", (chunk: Buffer)=>{
+                    image_buffer.write(chunk.toString("binary"), write_header, "binary");
+                    write_header += chunk.byteLength;
+                });
+
+                response.on("close", ()=>{
+                    accept(image_buffer);
+                });
+            });;
+        });
+    }
+
 
     telegram_bot.command("set_broadcast_channel", async (context)=>{
         let message = context.message;
@@ -141,7 +188,7 @@ type Meet = {
         let instigator_id = message.from.id;
 
         if (chat.type == "group" || chat.type == "supergroup"){
-            let administrator_profile = await determine_administrator_role(instigator_id, chat.id);
+            let administrator_profile = await determine_administrator_role(instigator_id, get_main_group_chat_id());
     
             if (administrator_profile){
                 await context.reply("Please type any message in a Channel with the bot present to set the broadcast channel.");
@@ -165,17 +212,27 @@ type Meet = {
 
         let instigator_id = message.from.id;
 
-        if (chat.type == "group" || chat.type == "supergroup"){
-            let administrator_profile = await determine_administrator_role(instigator_id, chat.id);
+        let command_match = message.text.match(/(?<Command>\/[\w@_]+) (?<Parameter>.+)/);
 
-            if (administrator_profile){
-                if (get_main_group_chat_id() == chat.id){
-                    return context.reply("This group chat has already been marked as the main group chat.");
+        if (chat.type == "group" || chat.type == "supergroup"){
+            if (command_match){
+                let code = command_match.groups!.Parameter!;
+
+                if (code.trim() == one_time_code){
+                    if (get_main_group_chat_id() == chat.id){
+                        return context.reply("This group chat has already been marked as the main group chat.");
+                    }
+                    await set_main_group_chat(chat.id);
+                    await context.reply("This group chat has been marked as the main group chat.");
+                    generate_one_time_code();
+                }else{
+                    console.warn(`Security Warning: Someone by the name of ${message.from.first_name} or @${message.from.username} is trying to change the main group chat but entered the wrong code.`);
+                    await context.reply("This is the wrong one-time code. Please try again.");
                 }
-                await set_main_group_chat(chat.id);
-                await context.reply("This group chat has been marked as the main group chat.");
             }else{
-                await context.reply("You cannot perform this command as you are not an admin.");
+                await context.reply("When running the /set_main_group_chat command. You must specify the one-time code generated from the stdout of this bot." + 
+                    " Without it, you are not permitted to move this bot main group chat to another one. Please fetch it!"
+                );
             }
         }else{
             await context.reply("Cannot set this chat as the main group chat. It isn't a group chat.");
@@ -193,7 +250,7 @@ type Meet = {
         let instigator_id = message.from.id;
 
         if (chat.type == "group" || chat.type == "supergroup"){
-            let administrator_profile = await determine_administrator_role(instigator_id, chat.id);
+            let administrator_profile = await determine_administrator_role(instigator_id, get_main_group_chat_id());
 
             if (administrator_profile){
                 let username_match = message.text.match(/\/[^ ]+ (.+)/);
@@ -232,7 +289,7 @@ type Meet = {
         let instigator_id = message.from.id;
 
         if (chat.type == "group" || chat.type == "supergroup"){
-            let administrator_profile = await determine_administrator_role(instigator_id, chat.id);
+            let administrator_profile = await determine_administrator_role(instigator_id, get_main_group_chat_id());
 
             if (administrator_profile){
                 let username_match = message.text.match(/\/[^ ]+ (.+)/);
@@ -250,7 +307,7 @@ type Meet = {
                         await save_system_data();
                     }
                 }else{
-                    await context.reply("/deauthorize_pinning username");
+                    await context.reply("What is the username? Please repeat the command by following this example: /deauthorize_pin username");
                 }
             }else{
                 await context.reply("You cannot perform this command as you are not an admin.");
@@ -285,8 +342,7 @@ type Meet = {
         }
         
         if (chat.type == "private"){
-            
-            await context.reply("Please forward me the meet information (message) from the group chat to pin!~");
+            await context.reply("<b>➡️ Forward me the furmeet message from the group chat so I can pin it!</b>", {parse_mode: "HTML"});
             
             start_pin_process(instigator_id);
         }else{
@@ -334,10 +390,24 @@ type Meet = {
             let user_pin_process = get_current_pin_process(instigator_id);
 
             if (user_pin_process.context == "Forwarding"){
-                let meet_info_text = message.text || "";
+                console.log(`Successfully processed a forwarded message from`);
+                let meet_info_text = message.text || message.caption || "";
+                let is_image = message.photo != null;
+
+                let image: Buffer | undefined;
+
+                if (is_image){
+                    let files = message.photo!;
+                    let file = files[files.length - 1];
+
+                    let downloadable_file = await telegram_bot.api.getFile(file!.file_id);
+
+                    image = await download_image(`https://api.telegram.org/file/bot${telegram_bot_api_key}/${downloadable_file.file_path}`);
+                }
 
                 let identified_pinner = message.from.username || "unknown";
-                let identified_planner = (message as any).forward_from.username;
+                let identified_planner = 
+                    ((message as any).forward_from || {username: "unknown"}).username;
 
                 let identified_date = new Date();
                 identified_date = new Date(`${identified_date.toDateString()} 11:00:00 AM GMT-0700 (Mountain Standard Time)`);
@@ -426,18 +496,19 @@ type Meet = {
                     pinner: identified_pinner,
                     message_id: message.message_id,
                     chat_id: context.chat.id,
-                    meet_name: ""
+                    meet_name: "",
+                    meet_info: meet_info_text,
+                    attached_meet_media: image
                 };
 
                 user_pin_process.context = "NameInput";
 
-                await context.reply(
-                    `I have identified the meet information from your forwarded message!\n\n` +
-                    `I think the meet starts on ${identified_date.toLocaleString("en-US", {timeZone: "America/Edmonton"})}\n` +
-                    `And I think @${identified_planner} is the planner.\n\n` +
-                    `I do not have the capabilities to dream up the meet name.\n` +
-                    `First tell me the name of the meet and then let me know if there are corrections to be had!`
-                );
+                await context.reply(`I've pulled the meet details!
+The meet is on <b>${identified_date.toLocaleString("en-US", {timeZone: "America/Edmonton"})}</b>, and <b>@${identified_planner}</b> is the planner.
+
+I can't create a meet name >:(
+<b>Tell me the meet's name,</b> <u>then I'll ask if anything needs correcting.</u>
+`, {parse_mode: "HTML"});
             }
         }
     });
@@ -457,13 +528,10 @@ type Meet = {
                         let meet_name = message.text;
 
                         await context.reply(
-                            `Nice! I will call this meet the "${meet_name}"!`
-                        );
+                            `Nice! I will call this meet the <b>${meet_name}</b>!~`
+                        , {parse_mode: "HTML"});
 
                         user_pin_process.forwarded_meet_info!.meet_name = meet_name;
-
-
-                        await permit_delay(10);
                     }
                     case "EditingDate":{
                         if (user_pin_process.context == "EditingDate"){
@@ -471,16 +539,17 @@ type Meet = {
 
                             if (!Number.isNaN(parsed_date.getTime())){
                                 await context.reply(
-                                    `I think the correct date is ${parsed_date.toLocaleString("en-US", {timeZone: "America/Edmonton"})}!\n` +
-                                    `I will use this for the meet!`
-                                );
+                                    `I think the correct date is <b>${parsed_date.toLocaleString("en-US", {timeZone: "America/Edmonton"})}</b>!\n` +
+                                    `I will use this for the meet!~`
+                                , {parse_mode: "HTML"});
 
                                 user_pin_process.forwarded_meet_info!.planned_date = parsed_date;
                             }else{
-                                await context.reply(
-                                    `I do not understand what the date you are implying is....\n` +
-                                    `To make it easier for me. Try something in the format as 6/30/2025 for May 30th 2025!`
-                                );
+                                await context.reply(`I don't understand that date…
+
+Try using a format I can read, like:
+2/19/2026 - which means February 19th 2026.
+`);
                             }
                         }
                     }
@@ -489,9 +558,9 @@ type Meet = {
                             let correct_name = message.text;
 
                             await context.reply(
-                                `I think the correct name is ${correct_name}!\n` +
+                                `I think the correct name is <b>${correct_name}</b>!\n` +
                                 `I will use this for the meet!`
-                            );
+                            , {parse_mode: "HTML"});
 
                             user_pin_process.forwarded_meet_info!.meet_name = correct_name;
                         }
@@ -501,17 +570,52 @@ type Meet = {
                         if (user_pin_process.context == "Editing"){
                             let choice_made = false;
 
-                            switch(message.text.toLowerCase().trim()){
+                            let command_match = message.text.match(/(\w+) (.+)?/);
+                            let command = message.text;
+                            let parameter = "";
+
+                            if (command_match){
+                                command = command_match[1]!;
+                                parameter = command_match[2]!;
+                            }
+
+
+                            switch(command.toLowerCase().trim()){
                                 case "date":{
-                                    user_pin_process.context = "EditingDate";
-                                    await context.reply("Alright! Tell me the correct date and I will do my best to understand it!");
-                                    choice_made = true;
+
+                                    let parsed_date = new Date(`${parameter} GMT-0700 (Mountain Standard Time)`);
+
+                                    if (parameter.length > 6 && !Number.isNaN(parsed_date.getTime())){
+                                        await context.reply(
+                                            `I think the correct date is <b>${parsed_date.toLocaleString("en-US", {timeZone: "America/Edmonton"})}</b>!\n` +
+                                            `I will use this for the meet!~`
+                                        , {parse_mode: "HTML"});
+
+                                        user_pin_process.forwarded_meet_info!.planned_date = parsed_date;
+                                    }else{
+                                        user_pin_process.context = "EditingDate";
+                                        await context.reply("Alright! Tell me the correct date and I will do my best to understand it!");
+                                        choice_made = true;
+                                    }
                                     break;
                                 }
                                 case "name":{
-                                    user_pin_process.context = "EditingName";
-                                    await context.reply("Alright! Tell me the correct name and I will remember that meet as such!");
-                                    choice_made = true;
+
+                                    let meet_name = parameter;
+
+                                    if (meet_name.length > 5){
+                                        await context.reply(
+                                            `Nice! I will call this meet the <b>${meet_name}</b>!~`
+                                        , {parse_mode: "HTML"});
+
+                                        user_pin_process.forwarded_meet_info!.meet_name = meet_name;
+                                    }else{
+                                        user_pin_process.context = "EditingName";
+                                        await context.reply("Alright! Tell me the correct name and I will remember that meet as such!");
+                                        choice_made = true;
+                                    }
+
+
                                     break;
                                 }
                                 case "cancel":{
@@ -526,8 +630,8 @@ type Meet = {
 
                                     await telegram_bot.api.sendMessage(
                                         system_data.main_group_chat_id, 
-                                        `I have pinned a meet on behalf of @${message.from.username!}, wait a second as it's coming up!`
-                                    );
+                                        `I have pinned a <b>meet</b> on behalf of @${message.from.username!}, wait a second as it's coming up!`
+                                    , {parse_mode: "HTML"});
 
                                     await telegram_bot.api.forwardMessage(
                                         system_data.broadcast_channel_id,
@@ -551,7 +655,10 @@ type Meet = {
                                     break;
                                 }
                                 default:{
-                                    await context.reply("I do not understand what you meant... please try again.");
+                                    await context.reply(
+                                        `I do not understand what you meant...\n` + 
+                                        `If you want to specify a correct date, try chatting me with this <b>Date</b> or <b>Date February 19th 2026</b>`
+                                    , {parse_mode: "HTML"});
                                 }
                             }
                             
@@ -562,20 +669,22 @@ type Meet = {
 
                         user_pin_process.context = "Editing";
 
-                        await context.reply(
-                            `For this step of the pinning process\n` + 
-                            `You will be making corrections to ensure the date, name reflects correctly.\n` + 
-                            `I am not an AI, I am a pre-programmed bot that can only be as smart as my programmable permits me!\n\n` +
-                            `Reply "Date" to correct the meet date\n` +
-                            `Reply "Name" to correct meet name\n` +
-                            `Reply "Cancel" to cancel this operation :(\n` + 
-                            `Reply "Done" to confirm what I had is correct. :3\n\n` + 
-                            `So far I think the meet is called "${user_pin_process.forwarded_meet_info!.meet_name}" ` + 
-                            `and is on ${user_pin_process.forwarded_meet_info!.planned_date.toLocaleString("en-US", {timeZone: "America/Edmonton"})}` +
-                            (user_pin_process.forwarded_meet_info!.planned_date.getTime() < Date.now() ? 
-                            "\n\nIt also looks like this meet is in the past. Is this correct? If you submit this pin now, it won't be visible. :(" : "")
-                        );
-                        
+                        let meet_name = user_pin_process.forwarded_meet_info!.meet_name;
+                        let meet_date = user_pin_process.forwarded_meet_info!.planned_date.toLocaleString("en-US", {timeZone: "America/Edmonton"});
+                        let warning = user_pin_process.forwarded_meet_info!.planned_date.getTime() < Date.now();
+
+                        await context.reply(`For this step of the pinning process,
+you can make corrections to the meet's details.
+
+Reply <b>Date</b> to correct the meet date  
+Reply <b>Name</b> to correct the meet name  
+Reply <b>Cancel</b> to stop this operation :(  
+Reply <b>Done</b> to confirm everything is correct :3
+
+So far, I think the meet is called <b>${meet_name}</b>
+and is on <b>${meet_date}</b>.\n` + 
+(warning ? `<u>This meet appears to be in the past.  
+If you submit it now, it won't be visible. :(</u>` : ""), {parse_mode: "HTML"});
                         break;
                     }
                 }
@@ -595,9 +704,189 @@ type Meet = {
 
 
     // await telegram_bot.init();
-    await telegram_bot.start();
+    console.log("Logging into bots...");
+    telegram_bot.start();
 
-    console.bindToExit(()=>{
-        database.halt();
-    })
+    console.log("Logged into Telegram!");
+    await new Promise<void>((accept, reject)=>{
+        discord_bot.once("clientReady", (readyClient)=>{
+            accept();
+        });
+        discord_bot.login(discord_bot_api_key);
+    });
+
+    let commands = new Collection<string, {
+        data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder,
+        execute: (interaction: ChatInputCommandInteraction)=>(Promise<void>)
+    }>();
+
+
+    async function update_commands(){
+        let commands_for_discord: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [];
+
+        
+        for (let command of commands){
+            commands_for_discord.push(command[1].data.toJSON());
+        }
+
+        await rest.put(Routes.applicationCommands(client_id), {body: commands_for_discord});
+    }
+
+    const thumbnail_attachment = new AttachmentBuilder("./resources/thumbnail.png");
+
+    function create_discord_bot_embed(){
+        return new EmbedBuilder()
+            .setColor(0x00AAFF)
+            .setTitle("Calgary Furmeet's Telegram/Discord")
+            .setURL("https://t.me/CalgaryFurMeets")
+            .setThumbnail("attachment://thumbnail.png")
+    }
+
+    let meet_selection_option = new SlashCommandStringOption();
+    meet_selection_option.setName("meet_name");
+    meet_selection_option.setDescription("The name of the meet you want to look up the information for");
+    meet_selection_option.setRequired(true);
+    
+    commands.set("get_upcoming_meets", {
+        data: new SlashCommandBuilder()
+            .setName("get_upcoming_meets")
+            .setDescription("Obtain a list of upcoming meets from Telegram. Run me to update the bot!"),
+        async execute(interation: ChatInputCommandInteraction){
+            let upcoming_meets: Meet[] = [];
+
+            for (let i = 0;i<system_data.number_of_events;i++){
+                let meet_raw_data = await database.readData(i + 1);
+
+                let meet = JadeStruct.toObject(meet_raw_data.Buffer) as Meet;
+
+                if (meet.planned_date.getTime() > Date.now()){
+                    upcoming_meets.push(meet);
+                }
+
+                if (upcoming_meets.length >= 5){
+                    break;
+                }
+            }
+
+            let embed_builder = create_discord_bot_embed();
+
+            embed_builder.setDescription("Here is a list of upcoming furmeets!");
+            embed_builder.setTimestamp(new Date());
+
+            meet_selection_option.setChoices();
+
+            let index = 0;
+            for (let meet of upcoming_meets){
+
+                meet_selection_option.addChoices({name: meet.meet_name, value: `Meet: #${index}`});
+
+                embed_builder.addFields({
+                    name: `**${meet.meet_name}**`,
+                    value: `<t:${Math.round(meet.planned_date.getTime() / 1000)}:f> (in <t:${Math.round(meet.planned_date.getTime() / 1000)}:R>) hosted by **@${meet.planner}** on Telegram!`,
+                });
+
+                index ++
+            }
+
+
+            interation.reply({
+                embeds: [embed_builder],
+                files: [thumbnail_attachment]
+                // flags: MessageFlags.Ephemeral
+            });
+
+            await update_commands();
+        }
+    });
+
+
+
+    commands.set("get_meet_info", {
+        data: new SlashCommandBuilder()
+            .setName("get_meet_info")
+            .setDescription("Obtain the meet info (directly copy) from Telegram by specifying the name of the meet.")
+            .addStringOption(meet_selection_option),
+        async execute(interation: ChatInputCommandInteraction){
+            let upcoming_meets: Meet[] = [];
+
+            for (let i = 0;i<system_data.number_of_events;i++){
+                let meet_raw_data = await database.readData(i + 1);
+
+
+                let meet = JadeStruct.toObject(meet_raw_data.Buffer) as Meet;
+
+                if (meet.planned_date.getTime() > Date.now()){
+                    upcoming_meets.push(meet);
+                }
+
+                if (upcoming_meets.length >= 5){
+                    break;
+                }
+            }
+
+            let embed_builder = create_discord_bot_embed();
+
+            let text = `I cannot find the meet you are looking for.\n`;
+
+            let index = Number(interation.options.getString("meet_name")!.match(/Meet: #(\d)+/)![1]!);
+
+            if (index < system_data.number_of_events){
+                let raw_meet_data = await database.readData(index + 1);
+
+                let meet = JadeStruct.toObject(raw_meet_data.Buffer) as Meet;
+
+                let files: AttachmentBuilder[] = [];
+
+                if (meet.attached_meet_media){
+                    files.push(
+                        new AttachmentBuilder(meet.attached_meet_media)
+                            .setName("meet_media.jpg")
+                    );
+                }
+
+                files.push(thumbnail_attachment);
+
+                embed_builder.setDescription(`**${meet.meet_name}** hosted on **<t:${Math.round(meet.planned_date.getTime() / 1000)}:f>**` +
+                    ` (in <t:${Math.round(meet.planned_date.getTime() / 1000)}:R>) hosted by **@${meet.planner}** on Telegram!\n\n` + 
+                    `\`\`\`text\n${meet.meet_info}\`\`\``);
+
+                embed_builder.setImage("attachment://meet_media.jpg");
+                
+                interation.reply({
+                    embeds: [embed_builder],
+                    files: files
+                    // flags: MessageFlags.Ephemeral
+                });
+            }else{
+
+                embed_builder.setDescription("I cannot find the meet you are looking for. :(");
+                interation.reply({
+                    embeds: [embed_builder],
+                    files: [thumbnail_attachment]
+                    // flags: MessageFlags.Ephemeral
+                });
+            }
+        }
+    });
+
+    
+
+    discord_bot.on("interactionCreate", async (interation)=>{
+        if (!interation.isChatInputCommand()) return;
+
+        let command = commands.get(interation.commandName);
+
+        if (!command){
+            return;
+        }
+
+        await command.execute(interation);
+    });
+
+    await update_commands();
+
+    console.log("Logged into Discord!");
+    
+
+
 })();
