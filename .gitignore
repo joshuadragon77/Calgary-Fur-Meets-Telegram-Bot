@@ -1,0 +1,8 @@
+database.db
+**/**.js
+**/**.js.map
+**/**.d.ts
+**/**.d.ts.map
+node_modules/
+logs/
+env.json

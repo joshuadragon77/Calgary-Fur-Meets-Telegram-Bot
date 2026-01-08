@@ -14,17 +14,24 @@
  * Let @joshuadagon77 on telegram know of any problem.
  */
 
-import { AttachmentBuilder, ChatInputCommandInteraction, Client, Collection, Embed, EmbedBuilder, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder, SlashCommandStringOption, type RESTPostAPIChatInputApplicationCommandsJSONBody, type SlashCommandOptionsOnlyBuilder } from "discord.js";
+import { AttachmentBuilder, AutoModerationRuleTriggerType, ChatInputCommandInteraction, Client, Collection, Embed, EmbedBuilder, GatewayIntentBits, InviteStageInstance, MessageFlags, REST, Routes, SlashCommandBuilder, SlashCommandStringOption, type RESTPostAPIChatInputApplicationCommandsJSONBody, type SlashCommandOptionsOnlyBuilder } from "discord.js";
 import { Bot, Context, type CommandContext } from "grammy";
 import { LowLevelJadeDB } from "./modules/jadestores.js";
 import { JadeStruct } from "./modules/jadestruct.js";
 import * as console from "./modules/consolescript.js";
 import { get } from "https";
-import { writeFile } from "fs/promises";
+import { readFileSync } from "fs";
+import { TelegramHandler } from "./modules/clients/telegram_menu.js";
 
-const telegram_bot_api_key = "";
-const discord_bot_api_key = "";
-const client_id = "";
+const configs = JSON.parse(readFileSync("./env.json", "ascii")) as {
+    "telegram_bot_token": string,
+    "discord_bot_token": string,
+    "discord_client_id": string
+};
+
+const telegram_bot_api_key = configs.telegram_bot_token;
+const discord_bot_api_key = configs.discord_bot_token;
+const client_id = configs.discord_client_id;
 
 const telegram_bot = new Bot(telegram_bot_api_key);
 const discord_bot = new Client({intents: [GatewayIntentBits.Guilds]});
@@ -42,6 +49,7 @@ type Meet = {
     chat_id: number,
     meet_name: string,
     meet_info: string,
+    meet_disabled: boolean,
     attached_meet_media: Buffer | undefined
 }
 
@@ -117,6 +125,24 @@ type Meet = {
         return administrator_profile;
     }
 
+    async function determine_is_chat_member(user_id: number, chat_id: number){
+        if (chat_id == 0){
+            return;
+        }
+
+        let chat_member = await telegram_bot.api.getChatMember(chat_id, user_id);
+
+        if (chat_member.status == "administrator" || chat_member.status == "member" || chat_member.status == "restricted" ||
+            chat_member.status == "creator"
+        ){
+            return true;
+        }else{
+            return false;
+        }
+    }
+
+
+
     await telegram_bot.api.setMyCommands([
         {command: "pin", description: "Pins the furmeet information to the channel. >_<"},
         {command: "get_upcoming_meets", description: "Get upcoming furmeets!~"},
@@ -124,6 +150,7 @@ type Meet = {
         {command: "set_main_group_chat", description: "Admin Command for setting the main group chat for telegram"},
         {command: "authorize_pin", description: "Admin Command for authorizing a user to pin stuff! You can specify the username as a parameter!"},
         {command: "deauthorize_pin", description: "Admin Command for deauthorizing a user to pin stuff! You can specify the username as a parameter!"},
+        {command: "delete_meet", description: "Admin Command for deleting a meet given a meet name!"},
     ]);
 
 
@@ -176,8 +203,8 @@ type Meet = {
         });
     }
 
-
     telegram_bot.command("set_broadcast_channel", async (context)=>{
+
         let message = context.message;
         let chat = context.chat;
 
@@ -249,32 +276,28 @@ type Meet = {
 
         let instigator_id = message.from.id;
 
-        if (chat.type == "group" || chat.type == "supergroup"){
-            let administrator_profile = await determine_administrator_role(instigator_id, get_main_group_chat_id());
+        let administrator_profile = await determine_administrator_role(instigator_id, get_main_group_chat_id());
 
-            if (administrator_profile){
-                let username_match = message.text.match(/\/[^ ]+ (.+)/);
+        if (administrator_profile){
+            let username_match = message.text.match(/\/[^ ]+ (.+)/);
 
-                if (username_match){
-                    let username = username_match[1];
-                    
-                    let index = system_data.authorized_usernames.findIndex(va=>username==va);
+            if (username_match){
+                let username = username_match[1];
+                
+                let index = system_data.authorized_usernames.findIndex(va=>username==va);
 
-                    if (index == -1){
-                        await context.reply(`Authorized ${username} to make pins!`);
-                        system_data.authorized_usernames.push(username!);
-                        await save_system_data();
-                    }else{
-                        await context.reply(`${username} is already authorized to make pins!`);
-                    }
+                if (index == -1){
+                    await context.reply(`Authorized ${username} to make pins!`);
+                    system_data.authorized_usernames.push(username!);
+                    await save_system_data();
                 }else{
-                    await context.reply("What is the username? Please repeat the command by following this example: /authorize_pin username");
+                    await context.reply(`${username} is already authorized to make pins!`);
                 }
             }else{
-                await context.reply("You cannot perform this command as you are not an admin.");
+                await context.reply("What is the username? Please repeat the command by following this example: /authorize_pin username");
             }
         }else{
-            await context.reply("Cannot set this chat as the main group chat. It isn't a group chat.");
+            await context.reply("You cannot perform this command as you are not an admin.");
         }
     });
 
@@ -288,32 +311,28 @@ type Meet = {
 
         let instigator_id = message.from.id;
 
-        if (chat.type == "group" || chat.type == "supergroup"){
-            let administrator_profile = await determine_administrator_role(instigator_id, get_main_group_chat_id());
+        let administrator_profile = await determine_administrator_role(instigator_id, get_main_group_chat_id());
 
-            if (administrator_profile){
-                let username_match = message.text.match(/\/[^ ]+ (.+)/);
+        if (administrator_profile){
+            let username_match = message.text.match(/\/[^ ]+ (.+)/);
 
-                if (username_match){
-                    let username = username_match[1];
-                    
-                    let index = system_data.authorized_usernames.findIndex(va=>username==va);
+            if (username_match){
+                let username = username_match[1];
+                
+                let index = system_data.authorized_usernames.findIndex(va=>username==va);
 
-                    if (index == -1){
-                        await context.reply(`${username} is already not authorized to make pins!`);
-                    }else{
-                        await context.reply(`Deauthorized ${username} from make pins!`);
-                        system_data.authorized_usernames.splice(index, 1);
-                        await save_system_data();
-                    }
+                if (index == -1){
+                    await context.reply(`${username} is already not authorized to make pins!`);
                 }else{
-                    await context.reply("What is the username? Please repeat the command by following this example: /deauthorize_pin username");
+                    await context.reply(`Deauthorized ${username} from make pins!`);
+                    system_data.authorized_usernames.splice(index, 1);
+                    await save_system_data();
                 }
             }else{
-                await context.reply("You cannot perform this command as you are not an admin.");
+                await context.reply("What is the username? Please repeat the command by following this example: /deauthorize_pin username");
             }
         }else{
-            await context.reply("Cannot set this chat as the main group chat. It isn't a group chat.");
+            await context.reply("You cannot perform this command as you are not an admin.");
         }
     });
 
@@ -337,8 +356,12 @@ type Meet = {
 
         let username_index = system_data.authorized_usernames.findIndex(va=>message.from.username==va);
 
+        if (!await determine_is_chat_member(instigator_id, get_main_group_chat_id())){
+            return await context.reply("You would need to be in the main group to make pins.");
+        }
+
         if (username_index == -1){
-            return await context.reply("This user is not part of the list authorized to make pins. Please run /authorize_pin to authorize the user in the group chat!");
+            return await context.reply("You are not part of the list authorized to make pins. Please run /authorize_pin to authorize the user in the group chat!");
         }
         
         if (chat.type == "private"){
@@ -350,9 +373,54 @@ type Meet = {
         }
     });
 
+    telegram_bot.command("delete_meet", async (context)=>{
+        let message = context.message;
+        let chat = context.chat;
+
+        if (!message){
+            return;
+        }
+
+        let instigator_id = message.from.id;
+
+        let administrator_profile = await determine_administrator_role(instigator_id, get_main_group_chat_id());
+
+        if (administrator_profile){
+            let meet_name_match = message.text.match(/\/[^ ]+ (.+)/);
+
+            if (meet_name_match){
+                let meet_name = meet_name_match[1];
+
+                for (let i = 0;i<system_data.number_of_events;i++){
+                    let meet_raw_data = await database.readData(i + 1);
+                    
+                    let meet = JadeStruct.toObject(meet_raw_data.Buffer) as Meet;
+
+                    if (meet && meet.meet_name == meet_name && meet.meet_disabled != true){
+                        meet.meet_disabled = true;
+
+                        await database.writeData(JadeStruct.toJadeStruct(meet).convertToNodeJSBuffer(), i + 1, "Meet");
+                        
+                        return await context.reply(`Deleted the meet <b>${meet.meet_name}</b>`, {parse_mode: "HTML"});
+                    }
+                }
+
+                await context.reply(`Cannot find the meet to delete of the name <b>${meet_name}</b>.`, {parse_mode: "HTML"});
+            }else{
+                await context.reply("What is the meet name? Please repeat the command by following this example: /delete_meet meet name");
+            }
+        }else{
+            await context.reply("You cannot perform this command as you are not an admin.");
+        }
+    });
+
     telegram_bot.command("get_upcoming_meets", async (context)=>{
         let message = context.message;
         let chat = context.chat;
+
+        if (!message){
+            return;
+        }
 
         let upcoming_meets: Meet[] = [];
 
@@ -361,13 +429,19 @@ type Meet = {
 
             let meet = JadeStruct.toObject(meet_raw_data.Buffer) as Meet;
 
-            if (meet.planned_date.getTime() > Date.now()){
+            if (meet.planned_date.getTime() > Date.now() && meet.meet_disabled != true){
                 upcoming_meets.push(meet);
             }
 
             if (upcoming_meets.length >= 5){
                 break;
             }
+        }
+
+        let instigator_id = message.from.id;
+
+        if (!await determine_is_chat_member(instigator_id, get_main_group_chat_id())){
+            return await context.reply("You would need to be in the main group to find upcoming meets.");
         }
 
         let text = `Here is a list of upcoming furmeets!\n\n` + 
@@ -385,11 +459,13 @@ type Meet = {
         let message = context.message;
         let instigator_id = message.from.id;
 
+        console.log(message);
         if (context.chat.type == "private"){
 
             let user_pin_process = get_current_pin_process(instigator_id);
 
             if (user_pin_process.context == "Forwarding"){
+
                 console.log(`Successfully processed a forwarded message from`);
                 let meet_info_text = message.text || message.caption || "";
                 let is_image = message.photo != null;
@@ -497,6 +573,7 @@ type Meet = {
                     message_id: message.message_id,
                     chat_id: context.chat.id,
                     meet_name: "",
+                    meet_disabled: false,
                     meet_info: meet_info_text,
                     attached_meet_media: image
                 };
@@ -521,6 +598,7 @@ I can't create a meet name >:(
         if (context.chat.type == "private"){
 
             let user_pin_process = get_current_pin_process(instigator_id);
+            let administrator_profile = await determine_administrator_role(instigator_id, get_main_group_chat_id());
 
             if (user_pin_process){
                 switch(user_pin_process.context){
@@ -654,6 +732,26 @@ Try using a format I can read, like:
                                     choice_made = true;
                                     break;
                                 }
+                                case "db":{
+                                    if (administrator_profile){
+                                        user_pin_process.context = "Done";
+                                        await context.reply("Sounds good. I will be saving it into the database instead.");
+    
+                                        let current_meet_index = system_data.number_of_events + 1;
+    
+                                        await database.writeData(
+                                            JadeStruct.toJadeStruct(user_pin_process.forwarded_meet_info).convertToNodeJSBuffer(), 
+                                            current_meet_index, 
+                                            "Meet"
+                                        );
+                                        system_data.number_of_events += 1;
+    
+                                        await save_system_data();
+
+                                        choice_made = true;
+                                        break;
+                                    }
+                                }
                                 default:{
                                     await context.reply(
                                         `I do not understand what you meant...\n` + 
@@ -678,9 +776,9 @@ you can make corrections to the meet's details.
 
 Reply <b>Date</b> to correct the meet date  
 Reply <b>Name</b> to correct the meet name  
-Reply <b>Cancel</b> to stop this operation :(  
+Reply <b>Cancel</b> to stop this operation :( 
 Reply <b>Done</b> to confirm everything is correct :3
-
+${administrator_profile ? "Reply <b>DB</b> to save only to database\n" : ""}
 So far, I think the meet is called <b>${meet_name}</b>
 and is on <b>${meet_date}</b>.\n` + 
 (warning ? `<u>This meet appears to be in the past.  
@@ -759,7 +857,7 @@ If you submit it now, it won't be visible. :(</u>` : ""), {parse_mode: "HTML"});
 
                 let meet = JadeStruct.toObject(meet_raw_data.Buffer) as Meet;
 
-                if (meet.planned_date.getTime() > Date.now()){
+                if (meet.planned_date.getTime() > Date.now() && meet.meet_disabled != true){
                     upcoming_meets.push(meet);
                 }
 
@@ -791,15 +889,13 @@ If you submit it now, it won't be visible. :(</u>` : ""), {parse_mode: "HTML"});
 
             interation.reply({
                 embeds: [embed_builder],
-                files: [thumbnail_attachment]
-                // flags: MessageFlags.Ephemeral
+                files: [thumbnail_attachment],
+                flags: MessageFlags.Ephemeral
             });
 
             await update_commands();
         }
     });
-
-
 
     commands.set("get_meet_info", {
         data: new SlashCommandBuilder()
@@ -815,7 +911,7 @@ If you submit it now, it won't be visible. :(</u>` : ""), {parse_mode: "HTML"});
 
                 let meet = JadeStruct.toObject(meet_raw_data.Buffer) as Meet;
 
-                if (meet.planned_date.getTime() > Date.now()){
+                if (meet.planned_date.getTime() > Date.now() && meet.meet_disabled != true){
                     upcoming_meets.push(meet);
                 }
 
@@ -854,16 +950,16 @@ If you submit it now, it won't be visible. :(</u>` : ""), {parse_mode: "HTML"});
                 
                 interation.reply({
                     embeds: [embed_builder],
-                    files: files
-                    // flags: MessageFlags.Ephemeral
+                    files: files,
+                    flags: MessageFlags.Ephemeral
                 });
             }else{
 
                 embed_builder.setDescription("I cannot find the meet you are looking for. :(");
                 interation.reply({
                     embeds: [embed_builder],
-                    files: [thumbnail_attachment]
-                    // flags: MessageFlags.Ephemeral
+                    files: [thumbnail_attachment],
+                    flags: MessageFlags.Ephemeral
                 });
             }
         }
@@ -889,4 +985,8 @@ If you submit it now, it won't be visible. :(</u>` : ""), {parse_mode: "HTML"});
     
 
 
-})();
+})//();
+
+
+new TelegramHandler(telegram_bot_api_key)
+    .attempt_sign_in();
