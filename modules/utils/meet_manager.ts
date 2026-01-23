@@ -248,38 +248,38 @@ export class MeetManager extends EventEmitter<{
             this.current_system_data = JadeStruct.toObject((await this.database.readData(0)).Buffer);
         }
 
-        setTimeout(() => {
+        // setTimeout(() => {
             
-            let meet: ParameterMeet = {
-                planner: {
-                    telegram: "joshuadragon77",
-                    discord: undefined
-                },
-                platform_specifics: {
-                    username: {
-                        user_id: 1,
-                        username: "joshuadragon77"
-                    },
-                    platform: "Telegram",
-                    telegram: undefined,
-                },
-                meet_name: "Nose Hill Park Furwalk",
-                meet_location: {
-                    name: "Nose Hill Park Parking Lot",
-                    address: "6465 14 St NW, Calgary, AB T2K 5R2",
-                    location: {
-                        latitude: 51.10872291117884,
-                        longitude: -114.08430683092935
-                    },
-                    valid: false
-                },
-                meet_date: new Date(),
-                meet_description: "walk time",
-                meet_disabled: false,
-                attached_meet_media: undefined,
-            }
+        //     let meet: ParameterMeet = {
+        //         planner: {
+        //             telegram: "joshuadragon77",
+        //             discord: undefined
+        //         },
+        //         platform_specifics: {
+        //             username: {
+        //                 user_id: 1,
+        //                 username: "joshuadragon77"
+        //             },
+        //             platform: "Telegram",
+        //             telegram: undefined,
+        //         },
+        //         meet_name: "Nose Hill Park Furwalk",
+        //         meet_location: {
+        //             name: "Nose Hill Park Parking Lot",
+        //             address: "6465 14 St NW, Calgary, AB T2K 5R2",
+        //             location: {
+        //                 latitude: 51.10872291117884,
+        //                 longitude: -114.08430683092935
+        //             },
+        //             valid: false
+        //         },
+        //         meet_date: new Date(),
+        //         meet_description: "walk time",
+        //         meet_disabled: false,
+        //         attached_meet_media: undefined,
+        //     }
 
-            this.post_meet(meet);
-        }, 2000);
+        //     this.post_meet(meet);
+        // }, 2000);
     }
 }
