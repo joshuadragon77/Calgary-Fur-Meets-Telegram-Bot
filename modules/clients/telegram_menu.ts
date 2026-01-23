@@ -1,10 +1,10 @@
 import * as console from "../consolescript.js";
-import { Bot, Context, InlineKeyboard } from "grammy";
+import { Bot, Context, InlineKeyboard, type CallbackQueryContext } from "grammy";
 import { Menu } from "@grammyjs/menu";
 import type { Message } from "grammy/types";
 import { CommandGroup } from "@grammyjs/commands";
 import { get } from "https";
-import type { MeetManager } from "../utils/meet_manager.js";
+import { MeetManager, type ChatConfiguration, type Meet } from "../utils/meet_manager.js";
 
 type TelegramUserStateMachine = {
     initialized_message: Message
@@ -40,12 +40,15 @@ type FurmeetCreation_UserStateMachine = {
     last_menu_context: Context | undefined;
 }
 
-type ChatConfigurator_UserStates = "IntroMenu" | "MainMenu";
+type ChatConfigurator_UserStates = "IntroMenu" | "MainMenu" | "AnnouncementConfiguration" | "PinConfiguration" | "Cancelled";
 
 type ChatConfigurator_UserStateMachine = {
     state: ChatConfigurator_UserStates,
+    chat_configuration: ChatConfiguration
     force_reply_request: Message | undefined
     last_menu_context: Context | undefined;
+
+    callback_channel_link: ((channel_id: number)=>(void)) | undefined
 }
 
 class ChatConfigurator_Menu{
@@ -54,11 +57,14 @@ class ChatConfigurator_Menu{
 
     private telegram_bot: Bot;
     private telegram_handler: TelegramHandler;
+    private meet_manager: MeetManager;
     private user_state_machines = new Map<string, ChatConfigurator_UserStateMachine>();
+    private channel_lookup_link: ChatConfigurator_UserStateMachine | undefined = undefined;
 
-    constructor(telegram_bot: Bot, telegram_handler: TelegramHandler){
+    constructor(telegram_bot: Bot, telegram_handler: TelegramHandler, meet_manager: MeetManager){
         this.telegram_handler = telegram_handler;
         this.telegram_bot = telegram_bot;
+        this.meet_manager = meet_manager;
 
         let intro_menu = this.intro_menu = new Menu("chat_configurator_initial")
             .submenu("Configure Chat...", "chat_configurator_root", async (context)=>{
@@ -66,31 +72,198 @@ class ChatConfigurator_Menu{
             });
         
         let main_menu = this.main_menu = new Menu("chat_configurator_root")
-            .submenu("📢 Configure Announcement Channnel", "chat_configurator_announcement")
+            .submenu("📢 Configure Announcement Channnel", "chat_configurator_announcement", async (context)=>{
+                await this.menu_interaction_state_machine(context, "AnnouncementConfiguration");
+            })
             .row()
-            .submenu("📌 Configure Pin Preference", "chat_configurator_pin")
+            .submenu("📌 Configure Pin Preference", "chat_configurator_pin", async (context)=>{
+                await this.menu_interaction_state_machine(context, "PinConfiguration");
+            })
             .row()
-            .submenu("❌ Close", "chat_configurator_pin");
+            .submenu("❌ Close", "chat_configurator_cancelled", async (context)=>{
+                await this.menu_interaction_state_machine(context, "Cancelled");
+            });
 
         let chat_configurator_announcement_menu = new Menu("chat_configurator_announcement")
-            .text("⚙️ Toggle Enable State [ON]")
+            .text((context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+
+                switch(chat_configuration.announcements.enabled){
+                    case "Channel":{
+                        return "⚙️ Broadcast to [Channel]";
+                        break;
+                    }
+                    case "Chat":{
+                        return "⚙️ Broadcast to [Chat]";
+                        break;
+                    }
+                    case "Disabled":{
+                        return "⚙️ Broadcast to [Disabled]";
+                        break;
+                    }
+                }
+            }, async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+
+                switch(chat_configuration.announcements.enabled){
+                    case "Channel":{
+                        chat_configuration.announcements.enabled = "Chat";
+                        break;
+                    }
+                    case "Chat":{
+                        chat_configuration.announcements.enabled = "Disabled";
+                        break;
+                    }
+                    case "Disabled":{
+                        chat_configuration.announcements.enabled = "Channel";
+                        break;
+                    }
+                }
+
+                await this.meet_manager.save_system_data();
+                await context.menu.update();
+            })
             .row()
-            .text("🔗 Pair with announcement channel")
+            .text(async (context)=>{
+
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+                
+                let binded_channel_chat_id = user_state_machine.chat_configuration.announcements.binded_announcement_chat_id;
+
+                if (binded_channel_chat_id){
+
+                    let binded_channel_chat = await this.telegram_bot.api.getChat(binded_channel_chat_id);
+
+                    return `🔗 Unpair from ${binded_channel_chat.title}`;
+                }else{
+                    if (this.channel_lookup_link == user_state_machine){
+                        return "🔗 Cancel Pairing Process";
+                    }else{
+                        return "🔗 Pair with announcement channel";
+                    }
+                }
+
+            }, async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+                
+                let binded_channel_chat_id = user_state_machine.chat_configuration.announcements.binded_announcement_chat_id;
+
+                if (binded_channel_chat_id){
+                    user_state_machine.chat_configuration.announcements.binded_announcement_chat_id = undefined;
+
+                    await this.meet_manager.save_system_data();
+                    await this.menu_send_status_message(context, "This chat has been unpaired from its channel!");
+                }else
+                    if (this.channel_lookup_link){
+                        if (this.channel_lookup_link == user_state_machine){
+                            this.channel_lookup_link = undefined;
+                        }
+                    }else{
+
+                        user_state_machine.callback_channel_link = async (chat_id: number)=>{
+                            this.channel_lookup_link = undefined;
+
+                            user_state_machine.chat_configuration.announcements.binded_announcement_chat_id = chat_id;
+
+                            await this.meet_manager.save_system_data();
+                            await this.menu_send_status_message(context, "The pair process has succeeded!");
+                            await this.menu_update_text(context);
+                        };
+
+                        this.channel_lookup_link = user_state_machine;
+                    }
+
+                await this.menu_update_text(context);
+            })
+            .row()
+            .back("🔙 Return", async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+
+                if (this.channel_lookup_link == user_state_machine){
+                    this.channel_lookup_link = undefined;
+                    await this.menu_send_status_message(context, "The channel pairing process has been cancelled.");
+                }
+            });
+
+        let chat_configurator_pin_menu = new Menu("chat_configurator_pin")
+            .text((context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+
+                if (chat_configuration.pin_preference.enabled){
+                    return "⚙️ Toggle Enable State [ON]"
+                }else{
+                    return "⚙️ Toggle Enable State [OFF]"
+                }
+            }, async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+
+                chat_configuration.pin_preference.enabled = !chat_configuration.pin_preference.enabled;
+
+                await this.meet_manager.save_system_data();
+                await context.menu.update();
+            })
+            .row()
+            .text((context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+
+                if (chat_configuration.pin_preference.unpin_after_expirey){
+                    return "⚙️ Toggle Unpin after Expirey [ON]"
+                }else{
+                    return "⚙️ Toggle Unpin after Expirey [OFF]"
+                }
+            }, async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+
+                chat_configuration.pin_preference.unpin_after_expirey = !chat_configuration.pin_preference.unpin_after_expirey;
+
+                await this.meet_manager.save_system_data();
+                await context.menu.update();
+            })
+            .row()
+            .text((context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+
+                switch(chat_configuration.pin_preference.expirey_period){
+                    case "1 day":{return "⏲️ Expirey Period [1 day]";};
+                    case "2 day":{return "⏲️ Expirey Period [2 day]";};
+                    case "4 day":{return "⏲️ Expirey Period [4 day]";};
+                    case "8 day":{return "⏲️ Expirey Period [8 day]";};
+                    case "16 day":{return "⏲️ Expirey Period [16 day]";};
+                }
+            }, async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                let chat_configuration = user_state_machine.chat_configuration!;
+
+                switch(chat_configuration.pin_preference.expirey_period){
+                    case "1 day":{chat_configuration.pin_preference.expirey_period = "2 day";break;};
+                    case "2 day":{chat_configuration.pin_preference.expirey_period = "4 day";break;};
+                    case "4 day":{chat_configuration.pin_preference.expirey_period = "8 day";break;};
+                    case "8 day":{chat_configuration.pin_preference.expirey_period = "16 day";break;};
+                    case "16 day":{chat_configuration.pin_preference.expirey_period = "1 day";break;};
+                }
+
+                await this.meet_manager.save_system_data();
+                await context.menu.update();
+            })
             .row()
             .back("🔙 Return");
 
-        let chat_configurator_pin_menu = new Menu("chat_configurator_pin")
-            .text("⚙️ Toggle Enable State [ON]")
-            .row()
-            .text("⚙️ Toggle Pin after Expirey [ON]")
-            .row()
-            .text("⚙️ Expirey Period [1 day]")
-            .row()
-            .back("🔙 Return");
+        let chat_configurator_cancelled_menu = new Menu("chat_configurator_cancelled");
 
         intro_menu.register(main_menu);
         main_menu.register(chat_configurator_announcement_menu);
         main_menu.register(chat_configurator_pin_menu);
+        main_menu.register(chat_configurator_cancelled_menu);
 
         this.telegram_bot.use(intro_menu);
     }
@@ -176,7 +349,17 @@ class ChatConfigurator_Menu{
                     `To get started, please press the <b>Configure Chat...</b> button!\n\n`;
             }
             case "MainMenu":{
-                return `Main Menu;\n\n`;
+                return `Welcome to Main Menu. Please select an option.\n\n`;
+            }
+            case "AnnouncementConfiguration":{
+                return `Welcome to Announcement Configuration. You can change bot behaviour when it comes to announcing in this particular chat.\n\n`;
+            }
+            case "PinConfiguration":{
+                return `Welcome to Pin Configuration. You can change bot behaviour when it comes to pinning in this particular chat.\n\n` + 
+                    `<i>Note that this setting does not apply if the posts are broadcasted to the channel instead of the chat</i>`;
+            }
+            case "Cancelled":{
+                return `This menu has been closed.\n\n`;
             }
         }
     }
@@ -210,7 +393,7 @@ class ChatConfigurator_Menu{
 
     }
 
-    async menu_generate(context: Context){
+    async menu_generate(context: Context, chat_configuration: ChatConfiguration){
 
         let user_chat_identifier = this.state_machine_obtain_user_chat_identifier(context);
 
@@ -220,8 +403,10 @@ class ChatConfigurator_Menu{
 
         let new_user_state_machine: ChatConfigurator_UserStateMachine = {
             state: "IntroMenu",
+            chat_configuration,
             force_reply_request: undefined,
             last_menu_context: undefined,
+            callback_channel_link: undefined
         };
 
 
@@ -286,6 +471,12 @@ class ChatConfigurator_Menu{
     }
 
     async on_general_message_event(context: Context){
+        if (this.channel_lookup_link && context.channelPost){
+
+            this.channel_lookup_link.callback_channel_link!(context.channelPost.chat.id);
+
+            return;
+        }
 
         let user_state_machine = this.state_machine_obtain_user_states(context);
 
@@ -304,12 +495,13 @@ class FurmeetCreation_GenMenu{
 
     private telegram_bot: Bot;
     private telegram_handler: TelegramHandler;
+    private meet_manager: MeetManager;
     private user_state_machines = new Map<string, FurmeetCreation_UserStateMachine>();
 
-    constructor(telegram_bot: Bot, telegram_handler: TelegramHandler){
-
+    constructor(telegram_bot: Bot, telegram_handler: TelegramHandler, meet_manager: MeetManager){
         this.telegram_handler = telegram_handler;
         this.telegram_bot = telegram_bot;
+        this.meet_manager = meet_manager;
 
         let intro_menu = this.intro_menu = new Menu("furmeet_creation_initial")
             .submenu("Create a furmeet!", "furmeet_creation_root", async (context)=>{
@@ -529,7 +721,41 @@ class FurmeetCreation_GenMenu{
             })
             .row()
             .submenu("✅ Submit Meet", "furmeet_creation_confirmed", async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+
                 await this.menu_interaction_state_machine(context, "Confirmed");
+
+                meet_manager.post_meet({
+                    planner: {
+                        discord: user_state_machine.planner_contact.discord_username,
+                        telegram: user_state_machine.planner_contact.telegram_username
+                    },
+                    platform_specifics: {
+                        username: {
+                            username: context.from.username || "unknown",
+                            user_id: context.from.id
+                        },
+                        platform: "Telegram",
+                        telegram: {
+                            message_id: 0,
+                            chat_id: 0
+                        }
+                    },
+                    meet_name: user_state_machine.meet_name,
+                    meet_location: {
+                        name: user_state_machine.meet_location.name,
+                        address: user_state_machine.meet_location.address,
+                        location: {
+                            latitude: user_state_machine.meet_location.location.latitude,
+                            longitude: user_state_machine.meet_location.location.longitude
+                        },
+                        valid: user_state_machine.meet_location.valid
+                    },
+                    meet_date: user_state_machine.meet_date,
+                    meet_description: user_state_machine.meet_description,
+                    meet_disabled: false,
+                    attached_meet_media: undefined
+                });
             });
 
         let confirmed_menu = new Menu("furmeet_creation_confirmed");
@@ -846,7 +1072,7 @@ class FurmeetCreation_GenMenu{
     async on_general_message_event(context: Context){
 
         let user_state_machine = this.state_machine_obtain_user_states(context);
-
+        
         if (!user_state_machine)
             return;
 
@@ -1072,6 +1298,239 @@ class FurmeetCreation_GenMenu{
     }
 }
 
+class Furmeet_PostManager{
+
+    private telegram_bot: Bot;
+    private telegram_handler: TelegramHandler;
+    private meet_manager: MeetManager;
+
+    private static inlineKeyboard = new InlineKeyboard()
+        .text("✅ Coming!", `posted_meet_coming`)
+        .text("❌ Cannot come", `posted_meet_notcoming`)
+
+
+    constructor(telegram_bot: Bot, telegram_handler: TelegramHandler, meet_manager: MeetManager){
+        this.telegram_bot = telegram_bot;
+        this.telegram_handler = telegram_handler;
+        this.meet_manager = meet_manager;
+
+        this.meet_manager.on("new_meet", async (meet: Meet)=>{
+            let current_system_data = this.meet_manager.read_system_data();
+
+            let telegram_chats = current_system_data.telegram.trusted_chat;
+
+            for (let telegram_chat of telegram_chats){
+
+                
+
+                let message: Message.TextMessage | undefined = undefined;
+                
+                switch (telegram_chat.announcements.enabled){
+                    case "Chat":{
+                        message = 
+                            await this.telegram_bot.api.sendMessage(
+                                telegram_chat.chat_id, 
+                                this.get_meet_new_body(meet),
+                            {
+                                parse_mode: "HTML",
+                                reply_markup: Furmeet_PostManager.inlineKeyboard,
+                                link_preview_options: {
+                                    is_disabled: true
+                                },
+                                protect_content: true
+                            });
+
+                            if (telegram_chat.pin_preference.enabled){
+                                await this.telegram_bot.api.pinChatMessage(
+                                    message.chat.id,
+                                    message.message_id
+                                );
+                            }
+                        break;
+                    }
+                    case "Channel":{
+                        message = 
+                            await this.telegram_bot.api.sendMessage(
+                                telegram_chat.announcements.binded_announcement_chat_id!, 
+                                this.get_meet_new_body(meet),
+                            {
+                                parse_mode: "HTML",
+                                reply_markup: Furmeet_PostManager.inlineKeyboard,
+                                link_preview_options: {
+                                    is_disabled: true
+                                },
+                                protect_content: true
+                            });
+                        break;
+                    }
+                    case "Disabled":{
+                        break;
+                    }
+                }
+
+                if (message){
+                    meet.platform_specifics.tracked_posts.telegram.push({
+                        chat_id: telegram_chat.chat_id,
+                        message_id: message.message_id
+                    });
+                    await this.meet_manager.set_meet(meet);
+                }
+            }
+
+        });
+
+        this.telegram_bot.callbackQuery(`posted_meet_coming`, async (context)=>{
+
+            let meet = (await this.get_meet_from_callback_query(context))!;
+            {
+                let telegram_user_index = meet.nonattendees.telegram.findIndex(va=>va.user_id == context.from.id);
+
+                if (telegram_user_index != -1){
+                    
+                    meet.nonattendees.telegram.splice(telegram_user_index, 1);
+                    
+                    await this.meet_manager.set_meet(meet);
+                }
+            }
+
+            let telegram_user_index = meet.attendees.telegram.findIndex(va=>va.user_id == context.from.id);
+
+            if (telegram_user_index == -1){
+                
+                meet.attendees.telegram.push({
+                    user_id: context.from.id,
+                    username: context.from.username || "unknown"
+                });
+                
+                await this.meet_manager.set_meet(meet);
+                await this.update_all_meet_posts(meet);
+            }else{
+                await context.answerCallbackQuery("You already have said you are not coming. You cannot come again.");
+            }
+        });
+
+        this.telegram_bot.callbackQuery(`posted_meet_notcoming`, async (context)=>{
+
+            // i know this looks like shit, but trust me it works bro
+            let meet = (await this.get_meet_from_callback_query(context))!;
+            {
+                let telegram_user_index = meet.attendees.telegram.findIndex(va=>va.user_id == context.from.id);
+
+                if (telegram_user_index != -1){
+                    
+                    meet.attendees.telegram.splice(telegram_user_index, 1);
+                    
+                    await this.meet_manager.set_meet(meet);
+                }
+            }
+
+            let telegram_user_index = meet.nonattendees.telegram.findIndex(va=>va.user_id == context.from.id);
+
+            if (telegram_user_index == -1){
+                
+                meet.nonattendees.telegram.push({
+                    user_id: context.from.id,
+                    username: context.from.username || "unknown"
+                });
+                
+                await this.meet_manager.set_meet(meet);
+                await this.update_all_meet_posts(meet);
+            }else{
+                await context.answerCallbackQuery("You already have said you are not coming. You cannot come again.");
+            }
+        });
+
+        this.telegram_bot.callbackQuery(`posted_meet_dm`, async (context)=>{
+
+            let meet = await this.get_meet_from_callback_query(context);
+
+            console.log(meet);
+            await context.answerCallbackQuery("Sent you the planner's contact details to your DMs! Please check there!");
+        });
+    }
+
+    async get_meet_from_callback_query(context: CallbackQueryContext<Context>){
+        return await this.get_meet_from_message_and_chat_id(context.msgId!, context.chatId!);
+    }
+
+    async get_meet_from_message_and_chat_id(message_id: number, chat_id: number){
+        let meets = await this.meet_manager.get_meets();
+
+        let matching_meet = meets.find(va=>{
+            let matching_message = va.platform_specifics.tracked_posts.telegram.findIndex((va)=>{
+                return va.message_id == message_id && va.chat_id == chat_id;
+            });
+
+            return matching_message != -1;
+        });
+
+        return matching_meet;
+    }
+
+    async update_all_meet_posts(meet: Meet){
+        for (let post of meet.platform_specifics.tracked_posts.telegram){
+            await this.telegram_bot.api.editMessageText(
+                post.chat_id,
+                post.message_id,
+                this.get_meet_new_body(meet),
+                {
+                    parse_mode: "HTML",
+                    reply_markup: Furmeet_PostManager.inlineKeyboard,
+                    link_preview_options: {
+                        is_disabled: true
+                    },
+                }
+            )
+        }
+    }
+
+    get_meet_new_body(meet: Meet){
+        return `<b><u>${meet.meet_name}</u></b>\n` +
+            `On <b>${meet.meet_date.toLocaleString()}</b>\n` + 
+            `At <b><a href="https://www.google.com/maps/search/?api=1&query=${meet.meet_location.location.latitude}%2C${meet.meet_location.location.longitude}">${meet.meet_location.name}</a></b>\n` + 
+            `Hosted by ${(()=>{
+                let hosted_links = [];
+
+                if (meet.planner.telegram){
+                    hosted_links.push(`@${meet.planner.telegram}`);
+                }
+                
+                return hosted_links.join(",");
+            })()}\n\n` +
+            `<i>${meet.meet_description}</i>\n\n` + 
+            `${(()=>{
+                let attendee_list = [];
+
+                // <a href="https://discord.com/users/317118157711998976/">thejades</a>
+
+                for (let attendee of meet.attendees.telegram){
+                    attendee_list.push(`@${attendee.username}`);
+                }
+
+                if (attendee_list.length > 0){
+                    return `Attendees (#${attendee_list.length}): ${attendee_list.join(", ")}\n`;
+                }else{
+                    return "";
+                }
+            })()}` +
+            `${(()=>{
+                let nonattendee_list = [];
+
+                // <a href="https://discord.com/users/317118157711998976/">thejades</a>
+
+                for (let attendee of meet.nonattendees.telegram){
+                    nonattendee_list.push(`@${attendee.username}`);
+                }
+
+                if (nonattendee_list.length > 0){
+                    return `Not Attendees (#${nonattendee_list.length}): ${nonattendee_list.join(", ")}\n`
+                }else{
+                    return "";
+                }
+            })()}`;
+    }
+}
+
 export class TelegramHandler{
 
     private telegram_bot;
@@ -1082,7 +1541,7 @@ export class TelegramHandler{
 
     public constructor(telegram_bot_token: string, meet_manager: MeetManager){
         this.telegram_bot = new Bot(telegram_bot_token);
-        this.meet_manager = meet_manager;``
+        this.meet_manager = meet_manager;
         this.telegram_bot_token = telegram_bot_token;
 
         this.telegram_bot.catch((error)=>{
@@ -1169,8 +1628,10 @@ export class TelegramHandler{
 
         let commands = new CommandGroup();
 
-        let furmeet_menu_creator = new FurmeetCreation_GenMenu(this.telegram_bot, this);
-        let chat_configurator_menu_creator = new ChatConfigurator_Menu(this.telegram_bot, this);
+        let furmeet_menu_creator = new FurmeetCreation_GenMenu(this.telegram_bot, this, this.meet_manager);
+        let chat_configurator_menu_creator = new ChatConfigurator_Menu(this.telegram_bot, this, this.meet_manager);
+        let furmeet_posted_manager = new Furmeet_PostManager(this.telegram_bot, this, this.meet_manager);
+
 
         commands.command("start", "Start Command", async (context)=>{
             let command_match = this.get_command_match(context);
@@ -1184,18 +1645,36 @@ export class TelegramHandler{
                 case "configure_chat":{
                     let previous_context = this.configurator_chat_extra_context.get(user.id);
 
-                    // if (!previous_context){
-                    //     return context.reply(
-                    //         `This command has failed.\nThe chat you were redirected from did not carry over its context. You most likely didn't run the command`,{
-                    //             protect_content: true
-                    //         });
-                    // }
+                    if (!previous_context){
+                        return context.reply(
+                            `This command has failed.\nThe chat you were redirected from did not carry over its context. You most likely didn't run the command`,{
+                                protect_content: true
+                            });
+                    }
 
-                    // let permission_state = await this.chat_check_permission_state(previous_context);
+                    let permission_state = await this.chat_check_permission_state(previous_context);
 
-                    // if (permission_state.administrator){
-                        await chat_configurator_menu_creator.menu_generate(context);
-                    // }
+                    if (permission_state.administrator){
+
+                        let meet_manager = this.meet_manager;
+                        let current_system_data = meet_manager.read_system_data();
+
+                        let chat_id = previous_context.chat!.id;
+
+                        let chat_configuration = current_system_data.telegram.trusted_chat.find((va)=>{
+                            return va.chat_id == chat_id;
+                        });
+
+                        if (chat_configuration){
+                            await chat_configurator_menu_creator.menu_generate(context, chat_configuration);
+                        }else{
+                        return context.reply(
+                            `This command has failed.\nThe chat that you are configurating doesn't exist or isn't trusted.`,{
+                                protect_content: true
+                            });
+                        }
+
+                    }
 
                     break;
                 }
@@ -1263,7 +1742,7 @@ export class TelegramHandler{
                     current_system_data.telegram.trusted_chat.push({
                         chat_id: context.chatId,
                         announcements: {
-                            enabled: false,
+                            enabled: "Chat",
                             binded_announcement_chat_id: undefined
                         },
                         pin_preference: {
@@ -1353,7 +1832,7 @@ export class TelegramHandler{
                 return;
 
             if (permission_state.administrator){
-                context.reply(`Now that I have identified this chat you can now press this button to configure this chat in my DMs~! Only the person that ran this command can interact with me.`,{
+                context.reply(`You can press this button to configure this chat in my DMs~! Only the person that ran this command can interact with me.`,{
                     protect_content: true,
                     reply_markup: chatconfigurator_redirect_menu
                 });
@@ -1381,19 +1860,29 @@ export class TelegramHandler{
         });
 
         this.telegram_bot.on("message:forward_origin", (context: Context)=>{
-            if (!context.update.message || !context.update.message.forward_origin)
+            if (!context.message || !context.message.forward_origin)
                 return;
 
             furmeet_menu_creator.on_general_message_event(context);
+            chat_configurator_menu_creator.on_general_message_event(context);
         });
 
         this.telegram_bot.on("message", (context: Context, next)=>{
-            if (!context.update.message || context.update.message.forward_origin)
+            if (!context.message || context.message.forward_origin)
                 return;
 
             furmeet_menu_creator.on_general_message_event(context);
+            chat_configurator_menu_creator.on_general_message_event(context);
 
             next();
+        });
+
+        this.telegram_bot.on("channel_post", async (context)=>{
+            if (!context.channelPost)
+                return;
+
+            furmeet_menu_creator.on_general_message_event(context);
+            chat_configurator_menu_creator.on_general_message_event(context);
         });
         
 

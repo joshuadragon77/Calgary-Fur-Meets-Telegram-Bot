@@ -4,20 +4,22 @@ import { EventEmitter } from "./eventemitter.js";
 import * as console from "../consolescript.js";
 import { OneTimePasswordGenerator } from "./otp.js";
 
-type SystemData = {
+export type ChatConfiguration = {
+    chat_id: number,
+    announcements: {
+        enabled: "Chat" | "Channel" | "Disabled",
+        binded_announcement_chat_id: number | undefined
+    },
+    pin_preference: {
+        enabled: boolean,
+        unpin_after_expirey: boolean,
+        expirey_period: "1 day" | "2 day" | "4 day" | "8 day" | "16 day"
+    }
+};
+
+export type SystemData = {
     telegram: {
-        trusted_chat: {
-            chat_id: number,
-            announcements: {
-                enabled: boolean,
-                binded_announcement_chat_id: number | undefined
-            },
-            pin_preference: {
-                enabled: boolean,
-                unpin_after_expirey: boolean,
-                expirey_period: "1 day" | "2 day" | "4 day" | "8 day" | "16 day"
-            }
-        }[],
+        trusted_chat: ChatConfiguration[],
         banned_user_ids: number[]
     }
     discord: {
@@ -33,17 +35,34 @@ type SystemData = {
     saved_meets: number
 }
 
+export type DiscordUser = {
+    username: string,
+    snowflake_id: number
+}
+
+export type TelegramUser = {
+    username: string,
+    user_id: number
+}
+
 export type Meet = {
     planner: {
-        discord?: string,
-        telegram?: string
+        discord: string | undefined,
+        telegram: string | undefined
     },
     platform_specifics: {
-        username: string,
+        username: TelegramUser | DiscordUser,
         platform: "Discord" | "Telegram",
-        telegram?: {
-            message_id: number,
-            chat_id: number
+        telegram: {
+            message_id: number;
+            chat_id: number;
+        } | undefined,
+        tracked_posts: {
+            telegram: {
+                message_id: number,
+                chat_id: number,
+            }[],
+            discord: any[]
         }
     }
     meet_name: string,
@@ -60,21 +79,29 @@ export type Meet = {
     meet_date: Date,
     meet_description: string,
     meet_disabled: boolean,
-    attached_meet_media: Buffer | undefined
+    attached_meet_media: Buffer | undefined,
+    attendees: {
+        telegram: TelegramUser[],
+        discord: DiscordUser[]
+    },
+    nonattendees: {
+        telegram: TelegramUser[],
+        discord: DiscordUser[]
+    }
 }
 
 export type ParameterMeet = {
     planner: {
-        discord?: string,
-        telegram?: string
+        discord: string | undefined,
+        telegram: string | undefined
     },
     platform_specifics: {
-        username: string,
+        username: TelegramUser | DiscordUser,
         platform: "Discord" | "Telegram",
         telegram?: {
-            message_id: number,
-            chat_id: number
-        }
+            message_id: number;
+            chat_id: number;
+        } | undefined
     }
     meet_name: string,
     meet_location: {
@@ -131,20 +158,36 @@ export class MeetManager extends EventEmitter<{
 
         let meet: Meet = {
             planner: parameterized_meet.planner,
-            platform_specifics: parameterized_meet.platform_specifics,
+            platform_specifics: {
+                platform: parameterized_meet.platform_specifics.platform,
+                telegram: parameterized_meet.platform_specifics.telegram,
+                username: parameterized_meet.platform_specifics.username,
+                tracked_posts: {
+                    telegram: [],
+                    discord: []
+                }
+            },
             meet_name: parameterized_meet.meet_name,
             meet_id: new_index,
             meet_location: parameterized_meet.meet_location,
             meet_date: parameterized_meet.meet_date,
             meet_description: parameterized_meet.meet_description,
             meet_disabled: false,
-            attached_meet_media: parameterized_meet.attached_meet_media
+            attached_meet_media: parameterized_meet.attached_meet_media,
+            attendees: {
+                telegram: [],
+                discord: []
+            },
+            nonattendees: {
+                telegram: [],
+                discord: []
+            }
         }
 
         this.fireEvent("new_meet", meet);
         
-        await this.save_system_data();
         await this.set_meet(meet);
+        await this.save_system_data();
     }
 
     async get_meets(){
@@ -204,5 +247,39 @@ export class MeetManager extends EventEmitter<{
             console.log("Managed to retrieve previous system data session! ^-^");
             this.current_system_data = JadeStruct.toObject((await this.database.readData(0)).Buffer);
         }
+
+        setTimeout(() => {
+            
+            let meet: ParameterMeet = {
+                planner: {
+                    telegram: "joshuadragon77",
+                    discord: undefined
+                },
+                platform_specifics: {
+                    username: {
+                        user_id: 1,
+                        username: "joshuadragon77"
+                    },
+                    platform: "Telegram",
+                    telegram: undefined,
+                },
+                meet_name: "Nose Hill Park Furwalk",
+                meet_location: {
+                    name: "Nose Hill Park Parking Lot",
+                    address: "6465 14 St NW, Calgary, AB T2K 5R2",
+                    location: {
+                        latitude: 51.10872291117884,
+                        longitude: -114.08430683092935
+                    },
+                    valid: false
+                },
+                meet_date: new Date(),
+                meet_description: "walk time",
+                meet_disabled: false,
+                attached_meet_media: undefined,
+            }
+
+            this.post_meet(meet);
+        }, 2000);
     }
 }
