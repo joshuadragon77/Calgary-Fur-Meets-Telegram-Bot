@@ -575,17 +575,19 @@ class FurmeetCreation_GenMenu{
             })
 
         let set_meet_date_menu = new Menu("furmeet_creation_set_date")
-            .text("📝 Wtrite a message", async (context)=>{
+            .text("📝 Write a Message", async (context)=>{
                 await context.answerCallbackQuery("Please follow the prompt below to submit the date");
 
                 let user_state_machine = this.state_machine_obtain_user_states(context)!;
 
                 await this.menu_send_status_message(context, "Enter the new Meet Date by writing a date. I will try my best to understand it!", true);
             })
+            .row()
             .submenu("📝 Edit Month", "furmeet_creation_set_date_month")
             .submenu("📝 Edit Date", "furmeet_creation_set_date_day")
             .row()
-            .submenu("📝 Edit Time", "furmeet_creation_set_date_time")
+            .submenu("📝 Edit Hour", "furmeet_creation_set_hour_time")
+            .submenu("📝 Edit Minute", "furmeet_creation_set_minute_time")
             .back("🔙 Back", async (context)=>{
                 await this.menu_interaction_state_machine(context, "MainMenu");
             })
@@ -638,12 +640,12 @@ class FurmeetCreation_GenMenu{
         set_meet_date_day_menu.back("❌ Cancel", async (context)=>{
         });
 
-        let set_meet_date_time_menu = new Menu("furmeet_creation_set_date_time");
+        let set_meet_hour_time_menu = new Menu("furmeet_creation_set_hour_time");
 
         for (let i = 0;i<24;i++){
             
             if (i != 0 && i % 3 == 0){
-                set_meet_date_time_menu.row();
+                set_meet_hour_time_menu.row();
             }
 
             let hour = i;
@@ -658,14 +660,59 @@ class FurmeetCreation_GenMenu{
                 hour = 12;
             }
 
-            set_meet_date_time_menu.back(`${hour} ${designator}`, async (context)=>{
+            set_meet_hour_time_menu.back((context)=>{
                 let user_state_machine = this.state_machine_obtain_user_states(context)!;
 
-                user_state_machine.meet_date.setHours(i, 0, 0);
+                let minute = user_state_machine.meet_date.getMinutes();
+
+                return `${hour}:${minute < 10 ? `0${minute}` : minute} ${designator}`;
+            }, async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+
+                user_state_machine.meet_date.setHours(i);
                 await this.menu_interaction_state_machine(context, "MeetDate");
             });
         }
-        set_meet_date_time_menu.back("❌ Cancel", async (context)=>{
+        set_meet_hour_time_menu.back("❌ Cancel", async (context)=>{
+        });
+
+        let set_meet_minute_time_menu = new Menu("furmeet_creation_set_minute_time");
+
+        for (let i = 0;i<12;i++){
+            
+            if (i != 0 && i % 3 == 0){
+                set_meet_minute_time_menu.row();
+            }
+
+            let minute = i * 5;
+
+            set_meet_minute_time_menu.back((context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+
+
+                // absolute cancer
+                let hour = user_state_machine.meet_date.getHours();
+
+                let designator = "AM";
+
+                if (hour >= 12){
+                    hour -= 12;
+                    designator = "PM";
+                }
+
+                if (i == 0){
+                    hour = 12;
+                }
+
+                return `${hour}:${minute < 10 ? `0${minute}` : minute} ${designator}`;
+            }, async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+
+                user_state_machine.meet_date.setMinutes(minute);
+                await this.menu_interaction_state_machine(context, "MeetDate");
+            });
+        }
+        set_meet_minute_time_menu.back("❌ Cancel", async (context)=>{
         });
 
         let set_planner_contacts_menu = new Menu("furmeet_creation_set_planner_contacts")
@@ -767,7 +814,8 @@ class FurmeetCreation_GenMenu{
         main_menu.register(set_meet_date_menu);
         set_meet_date_menu.register(set_meet_date_month_menu);
         set_meet_date_menu.register(set_meet_date_day_menu);
-        set_meet_date_menu.register(set_meet_date_time_menu);
+        set_meet_date_menu.register(set_meet_hour_time_menu);
+        set_meet_date_menu.register(set_meet_minute_time_menu);
         main_menu.register(set_planner_contacts_menu);
         main_menu.register(set_meet_description_menu);
         main_menu.register(set_meet_media_menu);
@@ -1155,6 +1203,121 @@ class FurmeetCreation_GenMenu{
 
                 break;
             }
+            case "MeetDate":{
+
+                let user_message = context.message!;
+                let new_meet_date = ` ${user_message.text!} `;
+
+
+                let identified_date = user_state_machine.meet_date;
+                let was_identifiable = false;
+
+
+                // yes will reduce this clutter.
+                if (new_meet_date.match(/Next Week/i)){
+                    identified_date = new Date(identified_date.getTime() + 1000 * 86400 * 7);
+                    was_identifiable = true
+                }else if (new_meet_date.match(/Tomorrow/i)){
+                    identified_date = new Date(identified_date.getTime() + 1000 * 86400);
+                    was_identifiable = true
+                }else{
+                    let month_matches: [string, number][] = [
+                        ["Jan", 0],
+                        ["January", 0],
+                        ["February", 1],
+                        ["Feb", 1],
+                        ["March", 2],
+                        ["Mar", 2],
+                        ["April", 3],
+                        ["Apr", 3],
+                        ["May", 4],
+                        ["June", 5],
+                        ["July", 6],
+                        ["Aug", 7],
+                        ["August", 7],
+                        ["Sept", 8],
+                        ["September", 8],
+                        ["Oct", 9],
+                        ["October", 9],
+                        ["Nov", 10],
+                        ["November", 10],
+                        ["Dec", 11],
+                        ["December", 11],
+                    ];
+
+                    let identified_month_str = "";
+
+                    for (let month_match of month_matches){
+                        if (new_meet_date.match(new RegExp(` ${month_match[0]} `, "i"))){
+
+                            if (month_match[1] < 5 && new Date().getMonth() == 11){
+                                identified_date.setFullYear(identified_date.getFullYear() + 1);
+                            }
+                            
+
+                            // fuck this logic, will fix later.
+                            identified_date.setMonth(month_match[1]);
+                            identified_date.setMonth(month_match[1]);
+                            identified_month_str = month_match[0];
+                            was_identifiable = true
+                            break;
+                        }
+                    }
+
+                    if (was_identifiable){
+                        let identified_likely_date = 
+                            new_meet_date.match(new RegExp(`${identified_month_str} (\\d+)(?:(?:th)|(?:st)|(?:nd)|(?:rd)|)`, "i"));
+
+                        if (identified_likely_date){
+                            identified_date.setDate(Number(identified_likely_date[1]!));
+                            was_identifiable = true
+                        }
+                    }else{
+                        let identified_likely_date = new_meet_date.match(/(\d+)(?:(?:th)|(?:st)|(?:nd)|(?:rd)|)/);
+
+                        if (identified_likely_date){
+                            identified_date.setDate(Number(identified_likely_date[1]!));
+                            was_identifiable = true
+                        }
+                    }
+                    
+                    
+                    let identified_likely_time = new_meet_date
+                        .match(/(?<Hour>\d{1,2})(?::(?<Minute>\d{2}))?(?::(?<Second>\d{2}))? ?(?<Segment>(?:am)|(?:pm))/i);
+
+                    if (identified_likely_time){
+
+                        let hour = identified_likely_time.groups!.Hour;
+                        let minute = identified_likely_time.groups!.Minute;
+                        let second = identified_likely_time.groups!.Second;
+                        let segment = identified_likely_time.groups!.Segment!.toUpperCase();
+
+                        let hour_str = String(hour);
+
+                        let minute_str = "00";
+                        if (minute){
+                            minute_str = `${(Number(minute) < 10) ? 0 : ""}${minute}`;
+                        }
+
+                        let second_str = "00";
+                        if (second){
+                            second_str = `${(Number(second) < 10) ? 0 : ""}${second}`;
+                        }
+                    
+
+                        identified_date = new Date(`${identified_date.toDateString()} ${hour_str}:${minute_str}:${second_str} ${segment}`);
+                    }
+                }
+
+                await this.telegram_bot.api.deleteMessage(user_message.chat.id, user_message.message_id);
+                await this.menu_send_status_message(context, `You have set the time of this meet to <b>${identified_date.toLocaleString()}</b>`);
+
+                user_state_machine.meet_date = identified_date;
+
+                this.menu_update_text(context);
+
+                break;
+            }
             case "MainMenu":{
                 let message = context.message;
 
@@ -1223,6 +1386,8 @@ class FurmeetCreation_GenMenu{
                                 identified_date.setFullYear(identified_date.getFullYear() + 1);
                             }
 
+                            // fuck this logic, will fix later.
+                            identified_date.setMonth(month_match[1]);
                             identified_date.setMonth(month_match[1]);
                             identified_month_str = month_match[0];
                             was_identifiable = true
@@ -1554,6 +1719,7 @@ class Furmeet_PostManager{
 export class TelegramHandler{
 
     private telegram_bot;
+    private telegram_username = "";
     private meet_manager;
     private telegram_bot_token: string;
 
@@ -1572,6 +1738,7 @@ export class TelegramHandler{
 
     public async attempt_sign_in(){
         console.log("Logging into Telegram Bot...");
+        this.telegram_username = (await this.telegram_bot.api.getMe()).username;
         await this.initialize_client();
 
         this.telegram_bot.start();
@@ -1714,7 +1881,7 @@ export class TelegramHandler{
         });
 
         let furmeet_redirect_menu = new Menu("furmeet_redirect_button")
-            .url("Start in my DMs", "t.me/CalMeets_Bot?start=create_furmeet");
+            .url("Start in my DMs", `t.me/${this.telegram_username}?start=create_furmeet`);
 
         this.telegram_bot.use(furmeet_redirect_menu);
 
@@ -1728,7 +1895,7 @@ export class TelegramHandler{
                 });
 
             if (context.chat.type != "private"){
-                context.reply(`I cannot allow you to start the furmeet process in a non-private chat. Please press this button to continue in my DMs~!`,{
+                context.reply(`To continue please start me in a DM using the button below!`,{
                     protect_content: true,
                     reply_markup: furmeet_redirect_menu
                 });
@@ -1839,7 +2006,7 @@ export class TelegramHandler{
         });
 
         let chatconfigurator_redirect_menu = new Menu("chatconfigurator_redirect_button")
-            .url("Start in my DMs", "t.me/CalMeets_Bot?start=configure_chat");
+            .url("Start in my DMs", `t.me/${this.telegram_username}?start=configure_chat`);
 
         this.telegram_bot.use(chatconfigurator_redirect_menu);
 
@@ -1889,8 +2056,15 @@ export class TelegramHandler{
             if (!context.message || !context.message.forward_origin)
                 return;
 
+            // TODO: handle forwaded messages with multiple images
+
+            if (!context.message.caption && !context.message.text){
+                return;
+            }
+
             furmeet_menu_creator.on_general_message_event(context);
             chat_configurator_menu_creator.on_general_message_event(context);
+
         });
 
         this.telegram_bot.on("message", (context: Context, next)=>{
@@ -1899,8 +2073,6 @@ export class TelegramHandler{
 
             furmeet_menu_creator.on_general_message_event(context);
             chat_configurator_menu_creator.on_general_message_event(context);
-
-            console.log(context);
 
             next();
         });
