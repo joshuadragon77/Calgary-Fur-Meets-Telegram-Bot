@@ -732,8 +732,9 @@ class FurmeetCreation_GenMenu{
                     },
                     platform_specifics: {
                         username: {
-                            username: context.from.username || "unknown",
-                            user_id: context.from.id
+                            username: context.from.username,
+                            user_id: context.from.id,
+                            full_name: `${context.from.first_name} ${context.from.last_name}`
                         },
                         platform: "Telegram",
                         telegram: {
@@ -1399,7 +1400,8 @@ class Furmeet_PostManager{
                 
                 meet.attendees.telegram.push({
                     user_id: context.from.id,
-                    username: context.from.username || "unknown"
+                    username: context.from.username,
+                    full_name: `${context.from.first_name} ${context.from.last_name}`
                 });
                 
                 await this.meet_manager.set_meet(meet);
@@ -1430,7 +1432,8 @@ class Furmeet_PostManager{
                 
                 meet.nonattendees.telegram.push({
                     user_id: context.from.id,
-                    username: context.from.username || "unknown"
+                    username: context.from.username,
+                    full_name: `${context.from.first_name} ${context.from.last_name}`
                 });
                 
                 await this.meet_manager.set_meet(meet);
@@ -1485,6 +1488,15 @@ class Furmeet_PostManager{
     }
 
     get_meet_new_body(meet: Meet){
+
+        let truncate = (str: string)=>{
+            if (str.length >= 17){
+                return `${str.substring(0, 17)}...`;
+            }else{
+                return str;
+            }
+        }
+
         return `<b><u>${meet.meet_name}</u></b>\n` +
             `On <b>${meet.meet_date.toLocaleString()}</b>\n` + 
             `At <b><a href="https://www.google.com/maps/search/?api=1&query=${meet.meet_location.location.latitude}%2C${meet.meet_location.location.longitude}">${meet.meet_location.name}</a></b>\n` + 
@@ -1504,7 +1516,11 @@ class Furmeet_PostManager{
                 // <a href="https://discord.com/users/317118157711998976/">thejades</a>
 
                 for (let attendee of meet.attendees.telegram){
-                    attendee_list.push(`@${attendee.username}`);
+                    if (attendee.username){
+                        attendee_list.push(`<a href="tg://user?id=${attendee.user_id}">@${attendee.username}</a>`);
+                    }else{
+                        attendee_list.push(`<a href="tg://user?id=${attendee.user_id}">${truncate(attendee.full_name)}</a>`);
+                    }
                 }
 
                 if (attendee_list.length > 0){
@@ -1519,7 +1535,11 @@ class Furmeet_PostManager{
                 // <a href="https://discord.com/users/317118157711998976/">thejades</a>
 
                 for (let attendee of meet.nonattendees.telegram){
-                    nonattendee_list.push(`@${attendee.username}`);
+                    if (attendee.username){
+                        nonattendee_list.push(`<a href="tg://user?id=${attendee.user_id}">@${attendee.username}</a>`);
+                    }else{
+                        nonattendee_list.push(`<a href="tg://user?id=${attendee.user_id}">${truncate(attendee.full_name)}</a>`);
+                    }
                 }
 
                 if (nonattendee_list.length > 0){
@@ -1859,6 +1879,12 @@ export class TelegramHandler{
         commands.command("unban_telegram_user", "Unblocks the telegram user by the username from using this bot.", async (context)=>{
         });
 
+        commands.command("bruh", "don't run this.", async (context)=>{
+            context.reply("<a href=\"tg://user?id=6178647975\">me</a>", {
+                parse_mode: "HTML"
+            })
+        });
+
         this.telegram_bot.on("message:forward_origin", (context: Context)=>{
             if (!context.message || !context.message.forward_origin)
                 return;
@@ -1873,6 +1899,8 @@ export class TelegramHandler{
 
             furmeet_menu_creator.on_general_message_event(context);
             chat_configurator_menu_creator.on_general_message_event(context);
+
+            console.log(context);
 
             next();
         });

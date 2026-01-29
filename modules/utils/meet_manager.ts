@@ -41,8 +41,9 @@ export type DiscordUser = {
 }
 
 export type TelegramUser = {
-    username: string,
-    user_id: number
+    username: string | undefined,
+    user_id: number,
+    full_name: string
 }
 
 export type Meet = {
