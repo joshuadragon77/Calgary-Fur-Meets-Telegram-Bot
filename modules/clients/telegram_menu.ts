@@ -1714,7 +1714,7 @@ export class TelegramHandler{
         });
 
         let furmeet_redirect_menu = new Menu("furmeet_redirect_button")
-            .url("Start in my DMs", "t.me/JadesTestBot2_bot?start=create_furmeet");
+            .url("Start in my DMs", "t.me/CalMeets_Bot?start=create_furmeet");
 
         this.telegram_bot.use(furmeet_redirect_menu);
 
@@ -1839,7 +1839,7 @@ export class TelegramHandler{
         });
 
         let chatconfigurator_redirect_menu = new Menu("chatconfigurator_redirect_button")
-            .url("Start in my DMs", "t.me/JadesTestBot2_bot?start=configure_chat");
+            .url("Start in my DMs", "t.me/CalMeets_Bot?start=configure_chat");
 
         this.telegram_bot.use(chatconfigurator_redirect_menu);
 
