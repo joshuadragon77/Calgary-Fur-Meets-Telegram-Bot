@@ -4,7 +4,7 @@ import { Menu } from "@grammyjs/menu";
 import type { Message } from "grammy/types";
 import { CommandGroup } from "@grammyjs/commands";
 import { get } from "https";
-import { MeetManager, type ChatConfiguration, type Meet } from "../utils/meet_manager.js";
+import { MeetManager, type ChatConfiguration, type DiscordUser, type Meet, type MeetAttendee } from "../utils/meet_manager.js";
 
 type TelegramUserStateMachine = {
     initialized_message: Message
@@ -1157,7 +1157,7 @@ class FurmeetCreation_GenMenu{
                     user_state_machine.meet_location.address = venue_location.address;
                 }else{
                     await this.menu_send_status_message(context, `You have set the location of this meet to <b>${location_name}</b>.\n` +
-                        `This location cannot be looked up from its name and therefore map context features cannot be used. Please use the location picker and try again.`
+                        `This location cannot be looked up from its name and therefore map context features cannot be used.`
                     );
                 }
 
@@ -1471,8 +1471,11 @@ class Furmeet_PostManager{
     private meet_manager: MeetManager;
 
     private static inlineKeyboard = new InlineKeyboard()
-        .text("✅ Coming!", `posted_meet_coming`)
-        .text("❌ Cannot come", `posted_meet_notcoming`)
+        .text("✅ I'm coming!", `posted_meet_coming`)
+        .text("🚘 Need a ride", `posted_meet_ride`)
+        .row()
+        .text("🤔 Maybe", `posted_meet_maybe`)
+        .text("❌ I cannot come", `posted_meet_notcoming`)
 
 
     constructor(telegram_bot: Bot, telegram_handler: TelegramHandler, meet_manager: MeetManager){
@@ -1506,12 +1509,12 @@ class Furmeet_PostManager{
                                 protect_content: true
                             });
 
-                            if (telegram_chat.pin_preference.enabled){
-                                await this.telegram_bot.api.pinChatMessage(
-                                    message.chat.id,
-                                    message.message_id
-                                );
-                            }
+                        if (telegram_chat.pin_preference.enabled){
+                            await this.telegram_bot.api.pinChatMessage(
+                                message.chat.id,
+                                message.message_id
+                            );
+                        }
                         break;
                     }
                     case "Channel":{
@@ -1545,75 +1548,90 @@ class Furmeet_PostManager{
 
         });
 
-        this.telegram_bot.callbackQuery(`posted_meet_coming`, async (context)=>{
-
+        let set_attendee_status = async (context: CallbackQueryContext<Context>, attendance_status: "accepted" | "maybe" | "ride" | "declined")=>{
             let meet = (await this.get_meet_from_callback_query(context))!;
-            {
-                let telegram_user_index = meet.nonattendees.telegram.findIndex(va=>va.user_id == context.from.id);
 
-                if (telegram_user_index != -1){
-                    
-                    meet.nonattendees.telegram.splice(telegram_user_index, 1);
-                    
-                    await this.meet_manager.set_meet(meet);
-                }
-            }
+            let telegram_attendee = meet.attendance.find(va=>va.user_type == "Telegram" && (va.user as TelegramUser).user_id == context.from.id);
 
-            let telegram_user_index = meet.attendees.telegram.findIndex(va=>va.user_id == context.from.id);
+            let success: "Good" | "Bad" | "Error" = "Error";
 
-            if (telegram_user_index == -1){
+            if (!telegram_attendee){
                 
-                meet.attendees.telegram.push({
-                    user_id: context.from.id,
-                    username: context.from.username,
-                    full_name: `${context.from.first_name} ${context.from.last_name}`
+                meet.attendance.push({
+                    user: { 
+                        user_id: context.from.id,
+                        username: context.from.username,
+                        full_name: `${context.from.first_name} ${context.from.last_name}`
+                    },
+                    user_type: "Telegram",
+                    attendance_status: attendance_status
                 });
                 
                 await this.meet_manager.set_meet(meet);
                 await this.update_all_meet_posts(meet);
+                success = "Good";
             }else{
-                await context.answerCallbackQuery("You already have said you are not coming. You cannot come again.");
+                if (telegram_attendee.attendance_status != attendance_status){
+                    telegram_attendee.attendance_status = attendance_status;
+                    await this.meet_manager.set_meet(meet);
+                    await this.update_all_meet_posts(meet);
+                    success = "Good";
+                }else{
+                    success = "Bad";
+                }
             }
+
+            let contextual_text = "";
+
+            switch(attendance_status){
+                case "accepted":{
+                    contextual_text = "accepted";
+                    break;
+                }
+                case "maybe":{
+                    contextual_text = "said maybe";
+                    break;
+                }
+                case "ride":{
+                    contextual_text = "put up a request for a ride";
+                    break;
+                }
+                case "declined":{
+                    contextual_text = "declined";
+                    break;
+                }
+            }
+
+            switch(success){
+                case "Good":{
+                    await context.answerCallbackQuery(`🥳 Yip yip!\nYou have ${contextual_text} to this meet!`);
+                    break;
+                }
+                case "Bad":{
+                    await context.answerCallbackQuery(`😓 Awwww!\nIt appears you already have ${contextual_text} to this meet!`);
+                    break;
+                }
+                case "Bad":{
+                    await context.answerCallbackQuery(`🤖 Eof!\nAn error has occured trying to reply to this meet...`);
+                    break;
+                }
+            }
+        }
+
+        this.telegram_bot.callbackQuery(`posted_meet_coming`, async (context)=>{
+            await set_attendee_status(context, "accepted");
+        });
+
+        this.telegram_bot.callbackQuery(`posted_meet_ride`, async (context)=>{
+            await set_attendee_status(context, "ride");
+        });
+
+        this.telegram_bot.callbackQuery(`posted_meet_maybe`, async (context)=>{
+            await set_attendee_status(context, "maybe");
         });
 
         this.telegram_bot.callbackQuery(`posted_meet_notcoming`, async (context)=>{
-
-            // i know this looks like shit, but trust me it works bro
-            let meet = (await this.get_meet_from_callback_query(context))!;
-            {
-                let telegram_user_index = meet.attendees.telegram.findIndex(va=>va.user_id == context.from.id);
-
-                if (telegram_user_index != -1){
-                    
-                    meet.attendees.telegram.splice(telegram_user_index, 1);
-                    
-                    await this.meet_manager.set_meet(meet);
-                }
-            }
-
-            let telegram_user_index = meet.nonattendees.telegram.findIndex(va=>va.user_id == context.from.id);
-
-            if (telegram_user_index == -1){
-                
-                meet.nonattendees.telegram.push({
-                    user_id: context.from.id,
-                    username: context.from.username,
-                    full_name: `${context.from.first_name} ${context.from.last_name}`
-                });
-                
-                await this.meet_manager.set_meet(meet);
-                await this.update_all_meet_posts(meet);
-            }else{
-                await context.answerCallbackQuery("You already have said you are not coming. You cannot come again.");
-            }
-        });
-
-        this.telegram_bot.callbackQuery(`posted_meet_dm`, async (context)=>{
-
-            let meet = await this.get_meet_from_callback_query(context);
-
-            console.log(meet);
-            await context.answerCallbackQuery("Sent you the planner's contact details to your DMs! Please check there!");
+            await set_attendee_status(context, "declined");
         });
     }
 
@@ -1661,10 +1679,21 @@ class Furmeet_PostManager{
                 return str;
             }
         }
-
+// ✅
+// 🚘
+// 👋
+// ❌
         return `<b><u>${meet.meet_name}</u></b>\n` +
             `On <b>${meet.meet_date.toLocaleString()}</b>\n` + 
-            `At <b><a href="https://www.google.com/maps/search/?api=1&query=${meet.meet_location.location.latitude}%2C${meet.meet_location.location.longitude}">${meet.meet_location.name}</a></b>\n` + 
+            `At <b><a href="${(()=>{
+                let { meet_location } = meet;
+
+                if (meet_location.location.latitude && meet_location.location.longitude){
+                    return `https://www.google.com/maps/search/?api=1&query=${meet_location.location.latitude}%2C${meet_location.location.longitude}`;
+                }else{
+                    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(meet_location.name)}`;
+                }
+            })()}">${meet.meet_location.name}</a></b>\n` + 
             `Hosted by ${(()=>{
                 let hosted_links = [];
 
@@ -1676,42 +1705,76 @@ class Furmeet_PostManager{
             })()}\n\n` +
             `<i>${meet.meet_description}</i>\n\n` + 
             `${(()=>{
-                let attendee_list = [];
+                let text_attendance_list = {
+                    accepted: [] as string[],
+                    need_car: [] as string[],
+                    maybe: [] as string[],
+                    declined: [] as string[],
+                }
+
+                let attendance_list = meet.attendance.sort((a, b)=>{
+                    return (a.user.username || "").localeCompare(b .user.username|| "");
+                });
 
                 // <a href="https://discord.com/users/317118157711998976/">thejades</a>
 
-                for (let attendee of meet.attendees.telegram){
-                    if (attendee.username){
-                        attendee_list.push(`<a href="tg://user?id=${attendee.user_id}">@${attendee.username}</a>`);
+                for (let attendee of attendance_list){
+                    let list: string[];
+                    switch(attendee.attendance_status){
+                        case "accepted":{
+                            list = text_attendance_list.accepted;
+                            break;
+                        }
+                        case "ride":{
+                            list = text_attendance_list.need_car;
+                            break;
+                        }
+                        case "maybe":{
+                            list = text_attendance_list.maybe;
+                            break;
+                        }
+                        case "declined":{
+                            list = text_attendance_list.declined;
+                            break;
+                        }
+                    }
+
+                    if (attendee.user_type == "Telegram"){
+                        let telegram_user = attendee.user as TelegramUser;
+                        list.push(`<a href="tg://user?id=${telegram_user.user_id}">@${telegram_user.username}</a>`);
                     }else{
-                        attendee_list.push(`<a href="tg://user?id=${attendee.user_id}">${truncate(attendee.full_name)}</a>`);
+                        let discord_user = attendee.user as DiscordUser;
+                        list.push(`<a href="https://discord.com/users/${discord_user.snowflake_id}">@${discord_user.username}</a>`);
                     }
                 }
 
-                if (attendee_list.length > 0){
-                    return `Attendees (#${attendee_list.length}): ${attendee_list.join(", ")}\n`;
+                let attendance_text = "";
+
+                if (text_attendance_list.accepted.length > 0){
+                    attendance_text += `✅ Attendees (#${text_attendance_list.accepted.length}): ${text_attendance_list.accepted.join(", ")}\n`;
                 }else{
-                    return "";
-                }
-            })()}` +
-            `${(()=>{
-                let nonattendee_list = [];
-
-                // <a href="https://discord.com/users/317118157711998976/">thejades</a>
-
-                for (let attendee of meet.nonattendees.telegram){
-                    if (attendee.username){
-                        nonattendee_list.push(`<a href="tg://user?id=${attendee.user_id}">@${attendee.username}</a>`);
-                    }else{
-                        nonattendee_list.push(`<a href="tg://user?id=${attendee.user_id}">${truncate(attendee.full_name)}</a>`);
-                    }
+                    attendance_text += "";
                 }
 
-                if (nonattendee_list.length > 0){
-                    return `Not Attendees (#${nonattendee_list.length}): ${nonattendee_list.join(", ")}\n`
+                if (text_attendance_list.need_car.length > 0){
+                    attendance_text += `🚘 Need a ride (#${text_attendance_list.need_car.length}): ${text_attendance_list.need_car.join(", ")}\n`;
                 }else{
-                    return "";
+                    attendance_text += "";
                 }
+
+                if (text_attendance_list.maybe.length > 0){
+                    attendance_text += `🤔 Maybe (#${text_attendance_list.maybe.length}): ${text_attendance_list.maybe.join(", ")}\n`;
+                }else{
+                    attendance_text += "";
+                }
+
+                if (text_attendance_list.declined.length > 0){
+                    attendance_text += `❌ Cannot come (#${text_attendance_list.declined.length}): ${text_attendance_list.declined.join(", ")}\n`;
+                }else{
+                    attendance_text += "";
+                }
+
+                return attendance_text;
             })()}`;
     }
 }

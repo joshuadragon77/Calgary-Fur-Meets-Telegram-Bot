@@ -3,6 +3,7 @@ import { JadeStruct } from "../jadestruct.js";
 import { EventEmitter } from "./eventemitter.js";
 import * as console from "../consolescript.js";
 import { OneTimePasswordGenerator } from "./otp.js";
+import { TelegramHandler } from "../clients/telegram_menu.js";
 
 export type ChatConfiguration = {
     chat_id: number,
@@ -46,7 +47,14 @@ export type TelegramUser = {
     full_name: string
 }
 
+export type MeetAttendee = {
+    user: TelegramUser | DiscordUser;
+    user_type: "Telegram" | "Discord";
+    attendance_status: "accepted" | "ride" | "maybe" | "declined";
+}
+
 export type Meet = {
+    version: "v0.1" | undefined
     planner: {
         discord: string | undefined,
         telegram: string | undefined
@@ -81,11 +89,14 @@ export type Meet = {
     meet_description: string,
     meet_disabled: boolean,
     attached_meet_media: Buffer | undefined,
-    attendees: {
+    attendance: MeetAttendee[]
+
+    // LEGACY, DO NOT USE
+    attendees?: {
         telegram: TelegramUser[],
         discord: DiscordUser[]
     },
-    nonattendees: {
+    nonattendees?: {
         telegram: TelegramUser[],
         discord: DiscordUser[]
     }
@@ -175,14 +186,8 @@ export class MeetManager extends EventEmitter<{
             meet_description: parameterized_meet.meet_description,
             meet_disabled: false,
             attached_meet_media: parameterized_meet.attached_meet_media,
-            attendees: {
-                telegram: [],
-                discord: []
-            },
-            nonattendees: {
-                telegram: [],
-                discord: []
-            }
+            attendance: [],
+            version: "v0.1"
         }
 
         this.fireEvent("new_meet", meet);
@@ -220,6 +225,49 @@ export class MeetManager extends EventEmitter<{
     async get_meet(meet_index: number){
         let raw_meet = await this.database.readData(meet_index);
         let meet = JadeStruct.toObject(raw_meet.Buffer) as Meet;
+
+        if (meet.version == undefined){
+            console.warn(`Upgrading ${meet.meet_name} to v0.1 databasing...`);
+            let new_attendance_list: MeetAttendee[] = [];
+
+            for (let attendee of meet.attendees!.telegram){
+                new_attendance_list.push({
+                    user: attendee,
+                    user_type: "Telegram",
+                    attendance_status: "accepted"
+                })
+            }
+
+            for (let attendee of meet.attendees!.discord){
+                new_attendance_list.push({
+                    user: attendee,
+                    user_type: "Discord",
+                    attendance_status: "accepted"
+                })
+            }
+
+            for (let nonattendees of meet.nonattendees!.telegram){
+                new_attendance_list.push({
+                    user: nonattendees,
+                    user_type: "Telegram",
+                    attendance_status: "declined"
+                })
+            }
+
+            for (let nonattendees of meet.nonattendees!.discord){
+                new_attendance_list.push({
+                    user: nonattendees,
+                    user_type: "Discord",
+                    attendance_status: "declined"
+                })
+            }
+
+            meet.version = "v0.1";
+            meet.attendance = new_attendance_list;
+
+            await this.set_meet(meet);
+            console.log(`Upgraded ${meet.meet_name} to v0.1 databasing!`);
+        }
 
         return meet;
     }
