@@ -4,16 +4,12 @@ import { Menu } from "@grammyjs/menu";
 import type { Message } from "grammy/types";
 import { CommandGroup } from "@grammyjs/commands";
 import { get } from "https";
-import { MeetManager, type ChatConfiguration, type DiscordUser, type Meet, type MeetAttendee } from "../utils/meet_manager.js";
+import { MeetManager, type ChatConfiguration, type DiscordUser, type Meet, type MeetAttendee, type TelegramUser } from "../utils/meet_manager.js";
 
 type TelegramUserStateMachine = {
     initialized_message: Message
 }
 
-type TelegramUser = {
-    user_id: number;
-    username: string;
-}
 
 type FurmeetCreation_UserStates = "IntroMenu" | "MainMenu" | "MeetName" | "MeetLocation" | "MeetDate" | "MeetPlanner" | "MeetDescription" | "MeetMedia" | "Cancelled" | "LastConfirm" | "Confirmed";
 
@@ -1741,7 +1737,7 @@ class Furmeet_PostManager{
 
                     if (attendee.user_type == "Telegram"){
                         let telegram_user = attendee.user as TelegramUser;
-                        list.push(`<a href="tg://user?id=${telegram_user.user_id}">@${telegram_user.username}</a>`);
+                        list.push(`<a href="tg://user?id=${telegram_user.user_id}">@${telegram_user.username || truncate(telegram_user.full_name)}</a>`);
                     }else{
                         let discord_user = attendee.user as DiscordUser;
                         list.push(`<a href="https://discord.com/users/${discord_user.snowflake_id}">@${discord_user.username}</a>`);
