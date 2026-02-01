@@ -87,7 +87,7 @@ class ChatConfigurator_Menu{
 
                 switch(chat_configuration.announcements.enabled){
                     case "Channel":{
-                        return "⚙️ Broadcast to [Channel]";
+                        return "⚙️ Broadcast to [Channel + Chat]";
                         break;
                     }
                     case "Chat":{
@@ -113,7 +113,9 @@ class ChatConfigurator_Menu{
                         break;
                     }
                     case "Disabled":{
-                        chat_configuration.announcements.enabled = "Channel";
+                        if (chat_configuration.announcements.binded_announcement_chat_id){
+                            chat_configuration.announcements.enabled = "Channel";
+                        }
                         break;
                     }
                 }
@@ -1491,6 +1493,7 @@ class Furmeet_PostManager{
                 let message: Message.TextMessage | undefined = undefined;
                 
                 switch (telegram_chat.announcements.enabled){
+                    case "Channel":
                     case "Chat":{
                         message = 
                             await this.telegram_bot.api.sendMessage(
@@ -1510,6 +1513,35 @@ class Furmeet_PostManager{
                                 message.chat.id,
                                 message.message_id
                             );
+                        }
+
+                        if (telegram_chat.announcements.enabled == "Channel"){
+                            let group_chat_link_name = await this.telegram_bot.api.getChat(telegram_chat.chat_id);
+
+                            if (group_chat_link_name.username){
+                                await this.telegram_bot.api.sendMessage(
+                                    telegram_chat.announcements.binded_announcement_chat_id!,
+                                    `${this.get_meet_new_body(meet, false)}\n\n` + 
+                                    `<i>To find more information on how to participate in this meet, <a href="${`https://t.me/${group_chat_link_name.username}/${message.message_id}`}">press me!</a></i>`,
+                                {
+                                    parse_mode: "HTML",
+                                    link_preview_options: {
+                                        is_disabled: true,
+                                    },
+                                    protect_content: true
+                                });
+                            }else
+                                await this.telegram_bot.api.sendMessage(
+                                    telegram_chat.announcements.binded_announcement_chat_id!,
+                                    `${this.get_meet_new_body(meet, false)}\n\n` + 
+                                    `<i>An error has occured creating the link to the meet. Please reconfigure the group chats.</i>`,
+                                {
+                                    parse_mode: "HTML",
+                                    link_preview_options: {
+                                        is_disabled: true,
+                                    },
+                                    protect_content: true
+                                });
                         }
                         break;
                     }
@@ -1650,23 +1682,40 @@ class Furmeet_PostManager{
     }
 
     async update_all_meet_posts(meet: Meet){
-        for (let post of meet.platform_specifics.tracked_posts.telegram){
-            await this.telegram_bot.api.editMessageText(
-                post.chat_id,
-                post.message_id,
-                this.get_meet_new_body(meet),
-                {
-                    parse_mode: "HTML",
-                    reply_markup: Furmeet_PostManager.inlineKeyboard,
-                    link_preview_options: {
-                        is_disabled: true
-                    },
-                }
-            )
+
+        if (meet.meet_date.getTime() < Date.now()){
+            for (let post of meet.platform_specifics.tracked_posts.telegram){
+                await this.telegram_bot.api.editMessageText(
+                    post.chat_id,
+                    post.message_id,
+                    this.get_meet_new_body(meet),
+                    {
+                        parse_mode: "HTML",
+                        link_preview_options: {
+                            is_disabled: true
+                        },
+                    }
+                )
+            }
+        }else{
+            for (let post of meet.platform_specifics.tracked_posts.telegram){
+                await this.telegram_bot.api.editMessageText(
+                    post.chat_id,
+                    post.message_id,
+                    this.get_meet_new_body(meet),
+                    {
+                        parse_mode: "HTML",
+                        reply_markup: Furmeet_PostManager.inlineKeyboard,
+                        link_preview_options: {
+                            is_disabled: true
+                        },
+                    }
+                )
+            }
         }
     }
 
-    get_meet_new_body(meet: Meet){
+    get_meet_new_body(meet: Meet, can_be_auto_updated = true){
 
         let truncate = (str: string)=>{
             if (str.length >= 17){
@@ -1680,7 +1729,13 @@ class Furmeet_PostManager{
 // 👋
 // ❌
         return `<b><u>${meet.meet_name}</u></b>\n` +
-            `On <b>${meet.meet_date.toLocaleString()}</b>\n` + 
+            `On <b>${meet.meet_date.toLocaleString()}</b>${(()=>{
+                if (meet.meet_date.getTime() < Date.now()){
+                    return "\n<b><u>Note: This meet has concluded and will no longer happen. You cannot mark whether you want to participate or not at this point. ;-;</u></b>";
+                }else{
+                    return "";
+                }
+            })()}\n` + 
             `At <b><a href="${(()=>{
                 let { meet_location } = meet;
 
@@ -1700,7 +1755,7 @@ class Furmeet_PostManager{
                 return hosted_links.join(",");
             })()}\n\n` +
             `<i>${meet.meet_description}</i>\n\n` + 
-            `${(()=>{
+            `${can_be_auto_updated ? (()=>{
                 let text_attendance_list = {
                     accepted: [] as string[],
                     need_car: [] as string[],
@@ -1771,7 +1826,7 @@ class Furmeet_PostManager{
                 }
 
                 return attendance_text;
-            })()}`;
+            })() : ""}`;
     }
 }
 
