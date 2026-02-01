@@ -696,7 +696,7 @@ class FurmeetCreation_GenMenu{
                     designator = "PM";
                 }
 
-                if (i == 0){
+                if (hour == 0){
                     hour = 12;
                 }
 
