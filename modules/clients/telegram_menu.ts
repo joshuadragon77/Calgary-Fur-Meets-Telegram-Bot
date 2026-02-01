@@ -115,6 +115,8 @@ class ChatConfigurator_Menu{
                     case "Disabled":{
                         if (chat_configuration.announcements.binded_announcement_chat_id){
                             chat_configuration.announcements.enabled = "Channel";
+                        }else{
+                            chat_configuration.announcements.enabled = "Chat";
                         }
                         break;
                     }
