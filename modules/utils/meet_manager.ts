@@ -88,6 +88,7 @@ export type Meet = {
     meet_date: Date,
     meet_description: string,
     meet_disabled: boolean,
+    shitty_meet_media: string | undefined,
     attached_meet_media: Buffer | undefined,
     attendance: MeetAttendee[]
 
@@ -128,6 +129,7 @@ export type ParameterMeet = {
     meet_date: Date,
     meet_description: string,
     meet_disabled: boolean,
+    shitty_meet_media: string | undefined,
     attached_meet_media: Buffer | undefined
 }
 
@@ -185,6 +187,7 @@ export class MeetManager extends EventEmitter<{
             meet_date: parameterized_meet.meet_date,
             meet_description: parameterized_meet.meet_description,
             meet_disabled: false,
+            shitty_meet_media: parameterized_meet.shitty_meet_media,
             attached_meet_media: parameterized_meet.attached_meet_media,
             attendance: [],
             version: "v0.1"

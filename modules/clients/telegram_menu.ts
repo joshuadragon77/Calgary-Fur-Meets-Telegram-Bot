@@ -27,6 +27,7 @@ type FurmeetCreation_UserStateMachine = {
     }
     meet_date: Date,
     meet_description: string,
+    meet_media: string | undefined,
     planner_contact: {
         discord_username: string | undefined,
         telegram_username: string | undefined,
@@ -795,6 +796,7 @@ class FurmeetCreation_GenMenu{
                         },
                         valid: user_state_machine.meet_location.valid
                     },
+                    shitty_meet_media: user_state_machine.meet_media,
                     meet_date: user_state_machine.meet_date,
                     meet_description: user_state_machine.meet_description,
                     meet_disabled: false,
@@ -965,7 +967,7 @@ class FurmeetCreation_GenMenu{
             }
             case "MeetMedia":{
                 return `You are changing the <b>Meet Media</b>.\n\n` + 
-                    `There is no uploaded media.\n` +
+                    `THIS FEATURE IS EXPERIMENTAL AND IS NOT READY FOR USE.\n` +
                     `To change it, upload a media in the chat or press the <b>Edit Meet Media</b> button.`;
             }
             case "Cancelled":{
@@ -1046,6 +1048,7 @@ class FurmeetCreation_GenMenu{
             meet_date: new Date("January 1 2026 6:21:00 AM"),
             last_menu_context: undefined,
             meet_description: "",
+            meet_media: undefined,
             planner_contact: {
                 discord_username: "",
                 telegram_username: context.from?.username || "Unknown",
@@ -1161,6 +1164,19 @@ class FurmeetCreation_GenMenu{
                 user_state_machine.meet_location.name = location_name;
 
                 await this.telegram_bot.api.deleteMessage(user_message.chat.id, user_message.message_id);
+
+                this.menu_update_text(context);
+
+                break;
+            }
+            case "MeetMedia":{
+                let user_message = context.message!;
+                let new_meet_description = user_message.text!;
+
+                await this.telegram_bot.api.deleteMessage(user_message.chat.id, user_message.message_id);
+                await this.menu_send_status_message(context, `You have set the media of this meet to <b>${new_meet_description}</b>`);
+
+                user_state_machine.meet_media = new_meet_description;
 
                 this.menu_update_text(context);
 
@@ -1500,7 +1516,7 @@ class Furmeet_PostManager{
                                 parse_mode: "HTML",
                                 reply_markup: Furmeet_PostManager.inlineKeyboard,
                                 link_preview_options: {
-                                    is_disabled: true
+                                    is_disabled: !meet.shitty_meet_media
                                 },
                                 protect_content: true
                             });
@@ -1522,7 +1538,7 @@ class Furmeet_PostManager{
                                 parse_mode: "HTML",
                                 reply_markup: Furmeet_PostManager.inlineKeyboard,
                                 link_preview_options: {
-                                    is_disabled: true
+                                    is_disabled: !meet.shitty_meet_media
                                 },
                                 protect_content: true
                             });
@@ -1659,7 +1675,7 @@ class Furmeet_PostManager{
                     parse_mode: "HTML",
                     reply_markup: Furmeet_PostManager.inlineKeyboard,
                     link_preview_options: {
-                        is_disabled: true
+                        is_disabled: !meet.shitty_meet_media
                     },
                 }
             )
@@ -1680,7 +1696,7 @@ class Furmeet_PostManager{
 // 👋
 // ❌
         return `<b><u>${meet.meet_name}</u></b>\n` +
-            `On <b>${meet.meet_date.toLocaleString()}</b>\n` + 
+            `On <b>${meet.meet_date.toLocaleString()}</b>${meet.shitty_meet_media ? `<a href="${meet.shitty_meet_media}"> </a>` : ""}\n` + 
             `At <b><a href="${(()=>{
                 let { meet_location } = meet;
 
