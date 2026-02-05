@@ -3,6 +3,7 @@ import { Bot, Context, InlineKeyboard, type CallbackQueryContext } from "grammy"
 import { Menu } from "@grammyjs/menu";
 import type { Message } from "grammy/types";
 import { CommandGroup } from "@grammyjs/commands";
+import type { File } from "@grammyjs/types";
 import { get } from "https";
 import { MeetManager, type ChatConfiguration, type DiscordUser, type Meet, type MeetAttendee, type TelegramUser } from "../utils/meet_manager.js";
 
@@ -27,6 +28,7 @@ type FurmeetCreation_UserStateMachine = {
     }
     meet_date: Date,
     meet_description: string,
+    meet_media: Buffer | undefined,
     planner_contact: {
         discord_username: string | undefined,
         telegram_username: string | undefined,
@@ -752,8 +754,28 @@ class FurmeetCreation_GenMenu{
             .text("📝 Edit Meet Media", async (context)=>{
                 await context.answerCallbackQuery("Please follow the prompt below to submit the media");
                 let user_state_machine = this.state_machine_obtain_user_states(context)!;
-
+                
                 await this.menu_send_status_message(context, "Upload the new Meet Media using the attachment button!", true);
+            })
+            .row()
+            .text("🗑️ Clear Media", async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                
+                if (user_state_machine.meet_media){
+                    await this.menu_send_status_message(context, "Media Media has been cleared!", true);
+                }else{
+                    await this.menu_send_status_message(context, "Meet Media already has been cleared. There is no attached media.", true);
+                }
+            })
+            .row()
+            .text("🔭 Preview Media", async (context)=>{
+                let user_state_machine = this.state_machine_obtain_user_states(context)!;
+                
+                if (user_state_machine.meet_media){
+                    await this.menu_send_status_message(context, "", true);
+                }else{
+                    await this.menu_send_status_message(context, "There is no meet media.", true);
+                }
             })
             .row()
             .back("🔙 Back", async (context)=>{
@@ -968,9 +990,15 @@ class FurmeetCreation_GenMenu{
                     `To change it, specify a new description in the chat or press the <b>Edit Meet Description</b> button.`;
             }
             case "MeetMedia":{
-                return `You are changing the <b>Meet Media</b>.\n\n` + 
-                    `There is no uploaded media.\n` +
-                    `To change it, upload a media in the chat or press the <b>Edit Meet Media</b> button.`;
+                if (user_state_machine.meet_media){
+                    return `You are changing the <b>Meet Media</b>.\n\n` + 
+                        `You have uploaded a media of size ${user_state_machine.meet_media.byteLength} bytes.\n` +
+                        `To change it, upload a media in the chat or press the <b>Edit Meet Media</b> button.`;
+                }else{
+                    return `You are changing the <b>Meet Media</b>.\n\n` + 
+                        `There is no uploaded media.\n` +
+                        `To change it, upload a media in the chat or press the <b>Edit Meet Media</b> button.`;
+                }
             }
             case "Cancelled":{
                 return `You cancelled creating this furmeet. You are free to start this process whenevever you want.`
@@ -1050,6 +1078,7 @@ class FurmeetCreation_GenMenu{
             meet_date: new Date("January 1 2026 6:21:00 AM"),
             last_menu_context: undefined,
             meet_description: "",
+            meet_media: undefined,
             planner_contact: {
                 discord_username: "",
                 telegram_username: context.from?.username || "Unknown",
@@ -1101,6 +1130,24 @@ class FurmeetCreation_GenMenu{
                 parse_mode: "HTML"
             });
         }
+    }
+
+    async menu_send_status_image(context: Context, image_url: string, text: string){
+        let user_state_machine = this.state_machine_obtain_user_states(context);
+
+        if (!user_state_machine)
+            return;
+        
+        let force_reply_request = user_state_machine.force_reply_request;
+
+        if (force_reply_request){
+            await this.menu_clear_status_message(context);
+        }
+        
+        user_state_machine.force_reply_request = await context.replyWithPhoto(image_url, {
+            protect_content: true,
+            parse_mode: "HTML"
+        });
     }
 
     async menu_clear_status_message(context: Context){
@@ -1182,6 +1229,36 @@ class FurmeetCreation_GenMenu{
 
                 this.menu_update_text(context);
 
+                break;
+            }
+            case "MeetMedia":{
+                let user_message = context.message!;
+                console.log(user_message);
+
+                if (user_message.photo){
+                    let largest_photo = user_message.photo[0]!;
+
+                    for (let i = 1;i<user_message.photo.length;i++){
+                        if (user_message.photo[i]!.file_size! > largest_photo.file_size!){
+                            largest_photo = user_message.photo[i]!;
+                        }
+                    }
+
+                    await this.menu_send_status_message(context, `Downloading media...`);
+
+                    let telegram_file = await this.telegram_bot.api.getFile(largest_photo.file_id);
+
+
+                    let downloaded_photo = await this.telegram_handler.download_telegram_image(telegram_file);
+
+                    user_state_machine.meet_media = downloaded_photo;
+
+                    await this.menu_send_status_message(context, `Media downloaded!`);
+                }else{
+                    await this.menu_send_status_message(context, `The message you have sent does not contain any media.`);
+                }
+
+                this.menu_update_text(context);
                 break;
             }
             case "MeetPlanner":{
@@ -1927,6 +2004,26 @@ export class TelegramHandler{
         }
     }
 
+    async download_telegram_image(image_file: File){
+        return new Promise<Buffer>((accept, reject)=>{
+            get(`https://api.telegram.org/file/bot${this.telegram_bot_token}/${image_file.file_path}`, (response)=>{
+                let content_size = Number(response.headers["content-length"]);
+                let image_buffer = Buffer.alloc(content_size);
+
+                let write_header = 0;
+
+                response.on("data", (chunk: Buffer)=>{
+                    image_buffer.write(chunk.toString("binary"), write_header, "binary");
+                    write_header += chunk.byteLength;
+                });
+
+                response.on("close", ()=>{
+                    accept(image_buffer);
+                });
+            });
+        });
+    }
+
     private async initialize_client(){
 
         let commands = new CommandGroup();
@@ -2163,8 +2260,16 @@ export class TelegramHandler{
         });
 
         commands.command("bruh", "don't run this.", async (context)=>{
-            context.reply("<a href=\"tg://user?id=6178647975\">me</a>", {
+            context.reply("<a href=\"tg://user?id=6178647975\">me</a>" + 
+                "<a href=\"https://jades.dev/images/kades.png\"> </a>\n" +
+                "https://www.google.com/maps/search/?api=1&query=51.052769%2C-114.069098", {
                 parse_mode: "HTML"
+            })
+        });
+
+        commands.command("shit", "absolutely don't", async (context)=>{
+            context.replyWithPhoto("https://jades.dev/images/kades.png", {
+                caption: "shit"
             })
         });
 
