@@ -4,6 +4,7 @@ import { EventEmitter } from "./eventemitter.js";
 import * as console from "../consolescript.js";
 import { OneTimePasswordGenerator } from "./otp.js";
 import { TelegramHandler } from "../clients/telegram_menu.js";
+import { ImageServer } from "./image_server.js";
 
 export type ChatConfiguration = {
     chat_id: number,
@@ -88,7 +89,7 @@ export type Meet = {
     meet_date: Date,
     meet_description: string,
     meet_disabled: boolean,
-    attached_meet_media: Buffer | undefined,
+    attached_meet_media: string | undefined,
     attendance: MeetAttendee[]
 
     // LEGACY, DO NOT USE
@@ -128,12 +129,14 @@ export type ParameterMeet = {
     meet_date: Date,
     meet_description: string,
     meet_disabled: boolean,
-    attached_meet_media: Buffer | undefined
+    attached_meet_media: string | undefined
 }
 
 export class MeetManager extends EventEmitter<{
     "new_meet": Meet
 }>{
+
+    private image_server = new ImageServer();
 
     private otp_generator = new OneTimePasswordGenerator();
     private database = new LowLevelJadeDB("./database.db", 4096);
@@ -150,6 +153,8 @@ export class MeetManager extends EventEmitter<{
 
     constructor(){
         super();
+
+        this.image_server.open();
     }
 
     read_system_data(){

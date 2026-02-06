@@ -28,7 +28,7 @@ type FurmeetCreation_UserStateMachine = {
     }
     meet_date: Date,
     meet_description: string,
-    meet_media: Buffer | undefined,
+    meet_media: string | undefined,
     planner_contact: {
         discord_username: string | undefined,
         telegram_username: string | undefined,
@@ -945,15 +945,6 @@ class FurmeetCreation_GenMenu{
                     `<i>${user_state_machine.meet_description}</i>\n\n\n` +
                     `<i><u>Hint: You can forward me the message the planner sent and I can autofill most details!</u></i>`;
             }
-            case "MainMenu":{
-                return `You are creating a meet in which we will be announced to everyone.\n\n` + 
-                    `<b>Meet Name:</b> <u>${user_state_machine.meet_name}</u>\n` +
-                    `<b>Meet Date:</b> <u>${user_state_machine.meet_date.toLocaleString()}</u>\n` +
-                    `<b>Meet Location:</b> <u>${user_state_machine.meet_location.name}</u>\n` +
-                    `<b>Organizer:</b> <u>@${user_state_machine.planner_contact.telegram_username || "Unknown"}</u>\n` +
-                    `<i>${user_state_machine.meet_description}</i>\n\n\n` +
-                    `<i><u>Hint: You can forward me the message the planner sent and I can autofill most details!</u></i>`;
-            }
             case "MeetName":{
                 return `You are changing the <b>Meet Name</b>.\n\n` + 
                     `Currently, it is <u>${user_state_machine.meet_name}</u>.\n` +
@@ -1075,7 +1066,7 @@ class FurmeetCreation_GenMenu{
                 },
                 valid: false
             },
-            meet_date: new Date("January 1 2026 6:21:00 AM"),
+            meet_date: new Date(Date.now() + 3600 * 24),
             last_menu_context: undefined,
             meet_description: "",
             meet_media: undefined,
@@ -1248,11 +1239,11 @@ class FurmeetCreation_GenMenu{
 
                     let telegram_file = await this.telegram_bot.api.getFile(largest_photo.file_id);
 
-
                     let downloaded_photo = await this.telegram_handler.download_telegram_image(telegram_file);
 
                     user_state_machine.meet_media = downloaded_photo;
 
+                    await this.telegram_bot.api.deleteMessage(user_message.chat.id, user_message.message_id);
                     await this.menu_send_status_message(context, `Media downloaded!`);
                 }else{
                     await this.menu_send_status_message(context, `The message you have sent does not contain any media.`);
@@ -1402,18 +1393,6 @@ class FurmeetCreation_GenMenu{
                     break;
 
                 let meet_info_text = message.text || message.caption || "";
-                let is_image = message.photo != null;
-
-                // let image: Buffer | undefined;
-
-                // if (is_image){
-                //     let files = message.photo!;
-                //     let file = files[files.length - 1];
-
-                //     let downloadable_file = await telegram_bot.api.getFile(file!.file_id);
-
-                //     image = await download_image(`https://api.telegram.org/file/bot${telegram_bot_api_key}/${downloadable_file.file_path}`);
-                // }
 
                 let identified_pinner = message.from.username || "unknown";
                 let identified_planner = 
