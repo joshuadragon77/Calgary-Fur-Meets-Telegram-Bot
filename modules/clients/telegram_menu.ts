@@ -3378,8 +3378,29 @@ export class TelegramHandler{
                     let meet = await this.meet_manager.get_meet(Number(id!));
                     let { platform_specifics } = meet;
 
-                    if (platform_specifics.platform == "Telegram" && (platform_specifics.username as TelegramUser).user_id == context.from?.id){
+                    if (platform_specifics.platform == "Telegram" && (
+                        (platform_specifics.username as TelegramUser).user_id == context.from?.id ||
+                        global_permission.is_administrator
+                    )){
                         await furmeet_menu_manager.menu_generate(context, meet);
+                    }else{
+
+                        let truncate = (str: string)=>{
+                            if (str.length >= 17){
+                                return `${str.substring(0, 17)}...`;
+                            }else{
+                                return str;
+                            }
+                        }
+
+                        // TODO: change this nonsense to something to senseical. fuck this huge lin shit
+
+                        return context.reply(`You cannot change this meet as you are not the one originally posting this one.\n` +
+                            meet.platform_specifics.platform == "Telegram" ? 
+                                `Perhaps contact <a href="tg://user?id=${(meet.platform_specifics.username as TelegramUser).user_id}">@${(meet.platform_specifics.username as TelegramUser).username || truncate((meet.platform_specifics.username as TelegramUser).full_name)}</a>` : "", {
+                            protect_content: true,
+                            parse_mode: "HTML"
+                        });
                     }
         
                     break;
