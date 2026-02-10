@@ -3222,6 +3222,7 @@ class Furmeet_PostManager{
 
                 return attendance_text;
             })() : ""}\n` +
+            // Might cause an issue if the person repewats it again
             `<i>Last updated: ${format_date(new Date())}</i>`;
     }
 }
@@ -3640,12 +3641,12 @@ export class TelegramHandler{
 
             meets.sort((a, b)=>a.meet_date.getTime() - b.meet_date.getTime());
             
-
+            let chat_id = context.chat.id;
             let chat = await (async ()=>{
                 if (context.chat.type == "private"){
-                    return await this.telegram_bot.api.getChat(global_permission.belonging_chat_id!)
+                    return await this.telegram_bot.api.getChat(chat_id = global_permission.belonging_chat_id!)
                 }else{
-                    return await this.telegram_bot.api.getChat(context.chat.id);
+                    return await this.telegram_bot.api.getChat(chat_id = context.chat.id);
                 }
             })();
 
@@ -3675,7 +3676,7 @@ export class TelegramHandler{
                     } | undefined = undefined;
 
                     for (let tracked_post of meet.platform_specifics.tracked_posts.telegram){
-                        if (tracked_post.chat_id == global_permission.belonging_chat_id){
+                        if (tracked_post.chat_id == chat_id){
                             relevant_message = tracked_post;
                             break;
                         }
