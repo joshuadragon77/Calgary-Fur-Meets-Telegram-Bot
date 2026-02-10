@@ -3218,8 +3218,8 @@ class Furmeet_PostManager{
                 }
 
                 return attendance_text;
-            })() : ""}\n
-            <i>Last updated: ${format_date(new Date())}</i>`;
+            })() : ""}\n` +
+            `<i>Last updated: ${format_date(new Date())}</i>`;
     }
 }
 
