@@ -2917,66 +2917,108 @@ class Furmeet_PostManager{
 
         for (let post of meet.platform_specifics.tracked_posts.telegram){
 
-            if (imaged_must_be_updated){
-                if (meet.platform_specifics.telegram_run_time.cached_file_must_be_updated){
+            try{
 
-                    let edited_message_media = await this.telegram_bot.api.editMessageMedia(
-                        post.chat_id,
-                        post.message_id,
-                        InputMediaBuilder.photo(new InputFile(meet.attached_meet_media!))
-                    ) as (Update.Edited & Message);
-
-                    let photos = edited_message_media.photo!;
-                    let largest_photo = photos[0]!;
-
-                    for (let i = 1;i<photos.length;i++){
-                        if (photos[i]!.file_size! > largest_photo.file_size!){
-                            largest_photo = photos[i]!;
+                if (imaged_must_be_updated){
+                    if (meet.platform_specifics.telegram_run_time.cached_file_must_be_updated){
+    
+                        let edited_message_media = await this.telegram_bot.api.editMessageMedia(
+                            post.chat_id,
+                            post.message_id,
+                            InputMediaBuilder.photo(new InputFile(meet.attached_meet_media!))
+                        ) as (Update.Edited & Message);
+    
+                        let photos = edited_message_media.photo!;
+                        let largest_photo = photos[0]!;
+    
+                        for (let i = 1;i<photos.length;i++){
+                            if (photos[i]!.file_size! > largest_photo.file_size!){
+                                largest_photo = photos[i]!;
+                            }
                         }
+    
+                        meet.platform_specifics.telegram_run_time.cached_file_id = largest_photo.file_id
+                        meet.platform_specifics.telegram_run_time.cached_file_must_be_updated = false;
+    
+                        await this.meet_manager.set_meet(meet);
+                    }{
+                        await this.telegram_bot.api.editMessageMedia(post.chat_id, post.message_id, 
+                            InputMediaBuilder.photo(meet.platform_specifics.telegram_run_time.cached_file_id!)
+                        );
                     }
-
-                    meet.platform_specifics.telegram_run_time.cached_file_id = largest_photo.file_id
-                    meet.platform_specifics.telegram_run_time.cached_file_must_be_updated = false;
-
-                    await this.meet_manager.set_meet(meet);
-                }{
-                    await this.telegram_bot.api.editMessageMedia(post.chat_id, post.message_id, 
-                        InputMediaBuilder.photo(meet.platform_specifics.telegram_run_time.cached_file_id!)
-                    );
                 }
-            }
-            
-            switch(post.type){
-                case "channel":{
-                    let configuration = {
-                        parse_mode: "HTML",
-                        link_preview_options: {
-                            is_disabled: true
-                        },
-                    } as {
-                        parse_mode: "HTML",
-                        reply_markup?: InlineKeyboard
-                        link_preview_options: {
-                            is_disabled: true
-                        },
-                        caption?: string
-                    };
-
-                    let message_body = "";
-
-                    if (post.linked_message!.group_chat_username){
-                        message_body =
-                            `${this.get_meet_new_body(meet, false)}\n\n` + 
-                            `<i>To find more information on how to participate in this meet, <a href="${`https://t.me/${post.linked_message!.group_chat_username}/${post.linked_message!.message_id}`}">press me!</a></i>`;
-                    }else
-                        message_body =
-                            `${this.get_meet_new_body(meet, false)}\n\n` + 
-                            `<i>An error has occured creating the link to the meet. Please reconfigure the group chats.</i>`;
-
-                    try{
+                
+                switch(post.type){
+                    case "channel":{
+                        let configuration = {
+                            parse_mode: "HTML",
+                            link_preview_options: {
+                                is_disabled: true
+                            },
+                        } as {
+                            parse_mode: "HTML",
+                            reply_markup?: InlineKeyboard
+                            link_preview_options: {
+                                is_disabled: true
+                            },
+                            caption?: string
+                        };
+    
+                        let message_body = "";
+    
+                        if (post.linked_message!.group_chat_username){
+                            message_body =
+                                `${this.get_meet_new_body(meet, false)}\n\n` + 
+                                `<i>To find more information on how to participate in this meet, <a href="${`https://t.me/${post.linked_message!.group_chat_username}/${post.linked_message!.message_id}`}">press me!</a></i>`;
+                        }else
+                            message_body =
+                                `${this.get_meet_new_body(meet, false)}\n\n` + 
+                                `<i>An error has occured creating the link to the meet. Please reconfigure the group chats.</i>`;
+    
+                        try{
+                            if (meet.platform_specifics.telegram_run_time.is_image_post){
+                
+                                configuration.caption = message_body;
+                
+                                await this.telegram_bot.api.editMessageCaption(
+                                    post.chat_id,
+                                    post.message_id,
+                                    configuration
+                                );
+                            }else{
+                                await this.telegram_bot.api.editMessageText(
+                                    post.chat_id,
+                                    post.message_id,
+                                    message_body,
+                                    configuration
+                                );
+                            }
+                        }
+                        catch(er){};
+                        break;
+                    }
+                    case "groupchat":{
+                        let configuration = {
+                            parse_mode: "HTML",
+                            link_preview_options: {
+                                is_disabled: true
+                            },
+                        } as {
+                            parse_mode: "HTML",
+                            reply_markup?: InlineKeyboard
+                            link_preview_options: {
+                                is_disabled: true
+                            },
+                            caption?: string
+                        };
+    
+                        if (meet.meet_date.getTime() > Date.now()){
+                            configuration.reply_markup = this.get_meet_new_inline_keyboard(meet);
+                        }
+    
                         if (meet.platform_specifics.telegram_run_time.is_image_post){
             
-                            configuration.caption = message_body;
+                            configuration.caption = this.get_meet_new_body(meet);
             
                             await this.telegram_bot.api.editMessageCaption(
                                 post.chat_id,
@@ -2987,53 +3029,17 @@ class Furmeet_PostManager{
                             await this.telegram_bot.api.editMessageText(
                                 post.chat_id,
                                 post.message_id,
-                                message_body,
+                                this.get_meet_new_body(meet),
                                 configuration
                             );
                         }
+                        break;
                     }
-                    catch(er){};
-                    break;
-                }
-                case "groupchat":{
-                    let configuration = {
-                        parse_mode: "HTML",
-                        link_preview_options: {
-                            is_disabled: true
-                        },
-                    } as {
-                        parse_mode: "HTML",
-                        reply_markup?: InlineKeyboard
-                        link_preview_options: {
-                            is_disabled: true
-                        },
-                        caption?: string
-                    };
-
-                    if (meet.meet_date.getTime() > Date.now()){
-                        configuration.reply_markup = this.get_meet_new_inline_keyboard(meet);
-                    }
-
-                    if (meet.platform_specifics.telegram_run_time.is_image_post){
-        
-                        configuration.caption = this.get_meet_new_body(meet);
-        
-                        await this.telegram_bot.api.editMessageCaption(
-                            post.chat_id,
-                            post.message_id,
-                            configuration
-                        );
-                    }else{
-                        await this.telegram_bot.api.editMessageText(
-                            post.chat_id,
-                            post.message_id,
-                            this.get_meet_new_body(meet),
-                            configuration
-                        );
-                    }
-                    break;
                 }
             }
+            catch(er){
+                console.error(er);
+            };
         }
     }
 

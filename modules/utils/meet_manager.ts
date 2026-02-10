@@ -229,6 +229,7 @@ export class MeetManager extends EventEmitter<{
         meet.meet_date = parameterized_meet.meet_date,
         meet.meet_description = parameterized_meet.meet_description,
         meet.attached_meet_media = parameterized_meet.attached_meet_media,
+        meet.platform_specifics.telegram_run_time.is_image_post = !!parameterized_meet.attached_meet_media;
 
         this.fireEvent("update_meet", meet);
         
