@@ -790,9 +790,10 @@ class FurmeetCreation_GenMenu{
                 let user_state_machine = this.state_machine_obtain_user_states(context)!;
                 
                 if (user_state_machine.meet_media){
-                    await this.menu_send_status_message(context, "Media Media has been cleared!", true);
+                    user_state_machine.meet_media = undefined
+                    await this.menu_send_status_message(context, "Media Media has been cleared!", false);
                 }else{
-                    await this.menu_send_status_message(context, "Meet Media already has been cleared. There is no attached media.", true);
+                    await this.menu_send_status_message(context, "Meet Media already has been cleared. There is no attached media.", false);
                 }
             })
             .row()
