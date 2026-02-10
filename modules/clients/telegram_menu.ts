@@ -2959,7 +2959,7 @@ class Furmeet_PostManager{
                             parse_mode: "HTML",
                             reply_markup?: InlineKeyboard
                             link_preview_options: {
-                                is_disabled: true
+                                is_disabled: true,
                             },
                             caption?: string
                         };
@@ -3217,7 +3217,8 @@ class Furmeet_PostManager{
                 }
 
                 return attendance_text;
-            })() : ""}`;
+            })() : ""}\n
+            <i>Last updated: ${format_date(new Date())}</i>`;
     }
 }
 
