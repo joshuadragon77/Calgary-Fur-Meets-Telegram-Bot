@@ -50,11 +50,11 @@ export type TelegramUser = {
 export type MeetAttendee = {
     user: TelegramUser | DiscordUser;
     user_type: "Telegram" | "Discord";
-    attendance_status: "accepted" | "ride" | "maybe" | "declined";
+    attendance_status: "accepted" | "ride" | "maybe" | "maybenot" | "declined" | "notinterested";
 }
 
 export type Meet = {
-    version: "v0.1" | undefined
+    version: "v0.1" | "v0.2" | "v0.3" | undefined
     planner: {
         discord: string | undefined,
         telegram: string | undefined
@@ -66,10 +66,21 @@ export type Meet = {
             message_id: number;
             chat_id: number;
         } | undefined,
+        telegram_run_time: {
+            cached_file_id: string | undefined,
+            cached_file_must_be_updated: boolean,
+            is_image_post: boolean
+        }
         tracked_posts: {
             telegram: {
                 message_id: number,
                 chat_id: number,
+                linked_message: {
+                    message_id: number,
+                    chat_id: number,
+                    group_chat_username: string,
+                } | undefined
+                type: "groupchat" | "channel"
             }[],
             discord: any[]
         }
@@ -132,7 +143,9 @@ export type ParameterMeet = {
 }
 
 export class MeetManager extends EventEmitter<{
-    "new_meet": Meet
+    "new_meet": Meet,
+    "update_meet": Meet,
+    "delete_meet": Meet,
 }>{
 
     private otp_generator = new OneTimePasswordGenerator();
@@ -173,6 +186,11 @@ export class MeetManager extends EventEmitter<{
             platform_specifics: {
                 platform: parameterized_meet.platform_specifics.platform,
                 telegram: parameterized_meet.platform_specifics.telegram,
+                telegram_run_time: {
+                    cached_file_id: undefined,
+                    cached_file_must_be_updated: false,
+                    is_image_post: !!parameterized_meet.attached_meet_media
+                },
                 username: parameterized_meet.platform_specifics.username,
                 tracked_posts: {
                     telegram: [],
@@ -187,10 +205,32 @@ export class MeetManager extends EventEmitter<{
             meet_disabled: false,
             attached_meet_media: parameterized_meet.attached_meet_media,
             attendance: [],
-            version: "v0.1"
+            version: "v0.3"
         }
 
         this.fireEvent("new_meet", meet);
+        
+        await this.set_meet(meet);
+        await this.save_system_data();
+    }
+
+    async edit_meet(meet_id: number, parameterized_meet: ParameterMeet){
+
+        let meet = await this.get_meet(meet_id);
+
+        meet.planner = parameterized_meet.planner,
+        meet.platform_specifics.platform = parameterized_meet.platform_specifics.platform;
+        meet.platform_specifics.telegram = parameterized_meet.platform_specifics.telegram;
+        meet.platform_specifics.username = parameterized_meet.platform_specifics.username;
+        meet.platform_specifics.telegram_run_time.cached_file_must_be_updated = true;
+    
+        meet.meet_name = parameterized_meet.meet_name,
+        meet.meet_location = parameterized_meet.meet_location,
+        meet.meet_date = parameterized_meet.meet_date,
+        meet.meet_description = parameterized_meet.meet_description,
+        meet.attached_meet_media = parameterized_meet.attached_meet_media,
+
+        this.fireEvent("update_meet", meet);
         
         await this.set_meet(meet);
         await this.save_system_data();
@@ -269,6 +309,32 @@ export class MeetManager extends EventEmitter<{
             console.log(`Upgraded ${meet.meet_name} to v0.1 databasing!`);
         }
 
+        if (meet.version == "v0.1"){
+            console.warn(`Upgrading ${meet.meet_name} to v0.2 databasing...`);
+            meet.platform_specifics.telegram_run_time = {
+                cached_file_id: undefined,
+                cached_file_must_be_updated: false,
+                is_image_post: false
+            };
+
+            meet.version = "v0.2";
+
+            await this.set_meet(meet);
+            console.log(`Upgraded ${meet.meet_name} to v0.2 databasing!`);
+        }
+        if (meet.version == "v0.2"){
+            console.warn(`Upgrading ${meet.meet_name} to v0.3 databasing...`);
+            for (let tracked_post of meet.platform_specifics.tracked_posts.telegram){
+                tracked_post.type = "groupchat";
+            }
+
+            meet.version = "v0.3";
+
+            await this.set_meet(meet);
+            console.log(`Upgraded ${meet.meet_name} to v0.3 databasing!`);
+
+        }
+
         return meet;
     }
 
@@ -284,6 +350,8 @@ export class MeetManager extends EventEmitter<{
         meet.meet_disabled = true;
 
         await this.set_meet(meet);
+
+        this.fireEvent("delete_meet", meet);
     }
     
     async start(){
