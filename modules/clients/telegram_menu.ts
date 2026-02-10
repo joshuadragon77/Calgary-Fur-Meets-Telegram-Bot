@@ -7,7 +7,7 @@ import type { File, Update } from "@grammyjs/types";
 import { get } from "https";
 import { MeetManager, type ChatConfiguration, type DiscordUser, type Meet, type MeetAttendee, type TelegramUser } from "../utils/meet_manager.js";
 import { format_date } from "../utils/units.js";
-import { createHash, hash } from "crypto";
+import { createHash } from "crypto";
 
 type TelegramUserStateMachine = {
     initialized_message: Message
