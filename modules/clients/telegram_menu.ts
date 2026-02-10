@@ -7,7 +7,7 @@ import type { File, Update } from "@grammyjs/types";
 import { get } from "https";
 import { MeetManager, type ChatConfiguration, type DiscordUser, type Meet, type MeetAttendee, type TelegramUser } from "../utils/meet_manager.js";
 import { format_date } from "../utils/units.js";
-import { hash } from "crypto";
+import { createHash, hash } from "crypto";
 
 type TelegramUserStateMachine = {
     initialized_message: Message
@@ -3083,7 +3083,7 @@ class Furmeet_PostManager{
 // 🚘
 // 👋
 // ❌
-        let random_char = hash("sha256", meet.meet_name).charCodeAt(0);
+        let random_char = createHash("sha256").update(meet.meet_name).digest("binary").charCodeAt(0);
 
         let random_byte = random_char % 11; 
 
@@ -3623,7 +3623,7 @@ export class TelegramHandler{
             for (let meet of meets){
                 if (meet.meet_date.getTime() > Date.now() && meet.meet_disabled == false){
 
-                    let random_char = hash("sha256", meet.meet_name).charCodeAt(0);
+                    let random_char = createHash("sha256").update(meet.meet_name).digest("binary").charCodeAt(0);
 
                     let random_byte = random_char % 11; 
 
