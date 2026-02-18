@@ -445,7 +445,7 @@ class ChatConfigurator_Menu{
         let initial_message = this.state_machine_get_message(context);
 
         let message = await context.reply(initial_message, {
-            protect_content: true,
+            protect_content: false,
             parse_mode: "HTML",
             reply_markup: this.intro_menu,
         });
@@ -471,7 +471,7 @@ class ChatConfigurator_Menu{
         
         if (force_reply){
             user_state_machine.force_reply_request = await context.reply(text, {
-                protect_content: true,
+                protect_content: false,
                 reply_markup: {
                     force_reply: true
                 },
@@ -479,7 +479,7 @@ class ChatConfigurator_Menu{
             });
         }else{
             user_state_machine.force_reply_request = await context.reply(text, {
-                protect_content: true,
+                protect_content: false,
                 parse_mode: "HTML"
             });
         }
@@ -1124,7 +1124,7 @@ class FurmeetCreation_GenMenu{
         let initial_message = this.state_machine_get_message(context);
 
         let message = await context.reply(initial_message, {
-            protect_content: true,
+            protect_content: false,
             parse_mode: "HTML",
             reply_markup: this.intro_menu,
         });
@@ -1150,7 +1150,7 @@ class FurmeetCreation_GenMenu{
         
         if (force_reply){
             user_state_machine.force_reply_request = await context.reply(text, {
-                protect_content: true,
+                protect_content: false,
                 reply_markup: {
                     force_reply: true
                 },
@@ -1158,7 +1158,7 @@ class FurmeetCreation_GenMenu{
             });
         }else{
             user_state_machine.force_reply_request = await context.reply(text, {
-                protect_content: true,
+                protect_content: false,
                 parse_mode: "HTML"
             });
         }
@@ -1178,7 +1178,7 @@ class FurmeetCreation_GenMenu{
         
         user_state_machine.force_reply_request = await context.replyWithPhoto(new InputFile(image), {
             caption: text,
-            protect_content: true,
+            protect_content: false,
             parse_mode: "HTML"
         });
     }
@@ -2206,7 +2206,7 @@ class FurmeetManager_GenMenu{
         let initial_message = this.state_machine_get_message(context);
 
         let message = await context.reply(initial_message, {
-            protect_content: true,
+            protect_content: false,
             parse_mode: "HTML",
             reply_markup: this.intro_menu,
         });
@@ -2232,7 +2232,7 @@ class FurmeetManager_GenMenu{
         
         if (force_reply){
             user_state_machine.force_reply_request = await context.reply(text, {
-                protect_content: true,
+                protect_content: false,
                 reply_markup: {
                     force_reply: true
                 },
@@ -2240,7 +2240,7 @@ class FurmeetManager_GenMenu{
             });
         }else{
             user_state_machine.force_reply_request = await context.reply(text, {
-                protect_content: true,
+                protect_content: false,
                 parse_mode: "HTML"
             });
         }
@@ -2260,7 +2260,7 @@ class FurmeetManager_GenMenu{
         
         user_state_machine.force_reply_request = await context.replyWithPhoto(new InputFile(image), {
             caption: text,
-            protect_content: true,
+            protect_content: false,
             parse_mode: "HTML"
         });
     }
@@ -2668,7 +2668,7 @@ class Furmeet_PostManager{
                     new InputFile(image), {
                         caption: body,
                         parse_mode: "HTML",
-                        protect_content: true
+                        protect_content: false
                 })
             }else{
                 return await this.telegram_bot.api.sendPhoto(chat_id, 
@@ -2676,7 +2676,7 @@ class Furmeet_PostManager{
                         caption: body,
                         parse_mode: "HTML",
                         reply_markup: this.get_meet_new_inline_keyboard(meet),
-                        protect_content: true
+                        protect_content: false
                 })
             }
         }else{
@@ -2687,7 +2687,7 @@ class Furmeet_PostManager{
                         link_preview_options: {
                             is_disabled: true
                         },
-                        protect_content: true
+                        protect_content: false
                 });
             }else{
                 return await this.telegram_bot.api.sendMessage(chat_id, 
@@ -2697,7 +2697,7 @@ class Furmeet_PostManager{
                         link_preview_options: {
                             is_disabled: true
                         },
-                        protect_content: true
+                        protect_content: false
                 });
             }
         }
@@ -3383,7 +3383,7 @@ export class TelegramHandler{
         
                     if (!global_permission.is_member)
                         return context.reply(`You do not belong to a chat that is trusted by this bot. You cannot run this command.`, {
-                            protect_content: true,
+                            protect_content: false,
                             parse_mode: "HTML"
                         });
 
@@ -3410,7 +3410,7 @@ export class TelegramHandler{
                         return context.reply(`You cannot change this meet as you are not the one originally posting this one.\n` +
                             meet.platform_specifics.platform == "Telegram" ? 
                                 `Perhaps contact <a href="tg://user?id=${(meet.platform_specifics.username as TelegramUser).user_id}">@${(meet.platform_specifics.username as TelegramUser).username || truncate((meet.platform_specifics.username as TelegramUser).full_name)}</a>` : "", {
-                            protect_content: true,
+                            protect_content: false,
                             parse_mode: "HTML"
                         });
                     }
@@ -3423,7 +3423,7 @@ export class TelegramHandler{
                     if (!previous_context){
                         return context.reply(
                             `This command has failed.\nThe chat you were redirected from did not carry over its context. You most likely didn't run the command`,{
-                                protect_content: true
+                                protect_content: false
                             });
                     }
 
@@ -3445,7 +3445,7 @@ export class TelegramHandler{
                         }else{
                         return context.reply(
                             `This command has failed.\nThe chat that you are configurating doesn't exist or isn't trusted.`,{
-                                protect_content: true
+                                protect_content: false
                             });
                         }
 
@@ -3458,7 +3458,7 @@ export class TelegramHandler{
         
                     if (!global_permission.is_member)
                         return context.reply(`You do not belong to a chat that is trusted by this bot. You cannot run this command.`, {
-                            protect_content: true,
+                            protect_content: false,
                             parse_mode: "HTML"
                         });
         
@@ -3478,13 +3478,13 @@ export class TelegramHandler{
             
             if (!global_permission.is_member)
                 return context.reply(`You do not belong to a chat that is trusted by this bot. You cannot run this command.`, {
-                    protect_content: true,
+                    protect_content: false,
                     parse_mode: "HTML"
                 });
 
             if (context.chat.type != "private"){
                 context.reply(`To continue please start me in a DM using the button below!`,{
-                    protect_content: true,
+                    protect_content: false,
                     reply_markup: furmeet_redirect_menu
                 });
             }else{
@@ -3508,7 +3508,7 @@ export class TelegramHandler{
 
                     if (!otp_generator.verify_one_time_password(command_match?.rest || "")){
                         context.reply("This chat cannot be <b>authorized</b>! The OTP is wrong and the bot maintainer has been warned.", {
-                            protect_content: true,
+                            protect_content: false,
                             parse_mode: "HTML"
                         });
                         return;
@@ -3530,24 +3530,24 @@ export class TelegramHandler{
                     await this.meet_manager.save_system_data();
 
                     context.reply("This chat has been <b>authorized</b>! This chat is trusted and can now run most commands.", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }else{
                     context.reply("This chat is already <b>authorized</b>!", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }
             }else{
                 if (permission_state.type == "private"){
                     context.reply("This command cannot be run in a <b>private chat!</b>", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }else{
                     context.reply("You do not have permission to run this command <b>Authorize Chat</b>", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }
@@ -3569,24 +3569,24 @@ export class TelegramHandler{
                     await this.meet_manager.save_system_data();
 
                     context.reply("This chat has been <b>deauthorized</b>! This chat is untrusted and cannot run most commands without being trusted.", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }else{
                     context.reply("This chat is already <b>deauthorized</b>!", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }
             }else{
                 if (permission_state.type == "private"){
                     context.reply("This command cannot be run in a <b>private chat!</b>", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }else{
                     context.reply("You do not have permission to run this command <b>Deauthorize Chat</b>", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }
@@ -3608,7 +3608,7 @@ export class TelegramHandler{
 
             if (permission_state.administrator){
                 context.reply(`You can press this button to configure this chat in my DMs~! Only the person that ran this command can interact with me.`,{
-                    protect_content: true,
+                    protect_content: false,
                     reply_markup: chatconfigurator_redirect_menu
                 });
 
@@ -3616,12 +3616,12 @@ export class TelegramHandler{
             }else{
                 if (permission_state.type == "private"){
                     context.reply("This command cannot be run in a <b>private chat!</b>", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }else{
                     context.reply("You do not have permission to run this command <b>Deauthorize Chat</b>", {
-                        protect_content: true,
+                        protect_content: false,
                         parse_mode: "HTML"
                     });
                 }
@@ -3633,7 +3633,7 @@ export class TelegramHandler{
             
             if (!global_permission.is_member)
                 return context.reply(`You do not belong to a chat that is trusted by this bot. You cannot run this command.`, {
-                    protect_content: true,
+                    protect_content: false,
                     parse_mode: "HTML"
                 });
 
