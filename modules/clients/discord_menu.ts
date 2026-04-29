@@ -485,6 +485,8 @@ Hosted by [@${meet.planner.telegram}](https://t.me/${meet.planner.telegram})
                             channel_id: message.channelId,
                             guild_id: trusted_discord_server.guild_id
                         });
+
+                        await this.meet_manager.set_meet(meet);
                     }
                 }
 
