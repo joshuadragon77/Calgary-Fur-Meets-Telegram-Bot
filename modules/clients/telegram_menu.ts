@@ -5,7 +5,7 @@ import type { Message } from "grammy/types";
 import { CommandGroup } from "@grammyjs/commands";
 import type { File, Update } from "@grammyjs/types";
 import { get } from "https";
-import { MeetManager, type ChatConfiguration, type DiscordUser, type Meet, type MeetAttendee, type TelegramUser } from "../utils/meet_manager.js";
+import { MeetManager, type TelegramChatConfiguration, type DiscordUser, type Meet, type MeetAttendee, type TelegramUser } from "../utils/meet_manager.js";
 import { format_date } from "../utils/units.js";
 import { createHash } from "crypto";
 
@@ -70,7 +70,7 @@ type ChatConfigurator_UserStates = "IntroMenu" | "MainMenu" | "AnnouncementConfi
 
 type ChatConfigurator_UserStateMachine = {
     state: ChatConfigurator_UserStates,
-    chat_configuration: ChatConfiguration
+    chat_configuration: TelegramChatConfiguration
     force_reply_request: Message | undefined
     last_menu_context: Context | undefined;
 
@@ -423,7 +423,7 @@ class ChatConfigurator_Menu{
 
     }
 
-    async menu_generate(context: Context, chat_configuration: ChatConfiguration){
+    async menu_generate(context: Context, chat_configuration: TelegramChatConfiguration){
 
         let user_chat_identifier = this.state_machine_obtain_user_chat_identifier(context);
 
@@ -2809,13 +2809,11 @@ class Furmeet_PostManager{
                 });
                 
                 await this.meet_manager.set_meet(meet);
-                await this.update_all_meet_posts(meet);
                 success = "Good";
             }else{
                 if (telegram_attendee.attendance_status != attendance_status){
                     telegram_attendee.attendance_status = attendance_status;
                     await this.meet_manager.set_meet(meet);
-                    await this.update_all_meet_posts(meet);
                     success = "Good";
                 }else{
                     success = "Bad";
@@ -3178,7 +3176,7 @@ class Furmeet_PostManager{
                         list.push(`<a href="tg://user?id=${telegram_user.user_id}">@${telegram_user.username || truncate(telegram_user.full_name)}</a>`);
                     }else{
                         let discord_user = attendee.user as DiscordUser;
-                        list.push(`<a href="https://discord.com/users/${discord_user.snowflake_id}">@${discord_user.username}</a>`);
+                        list.push(`<a href="https://discord.com/users/${discord_user.snowflake_id}">🎮@${discord_user.username}</a>`);
                     }
                 }
 

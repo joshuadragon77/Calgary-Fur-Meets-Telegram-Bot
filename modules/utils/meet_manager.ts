@@ -5,7 +5,7 @@ import * as console from "../consolescript.js";
 import { OneTimePasswordGenerator } from "./otp.js";
 import { TelegramHandler } from "../clients/telegram_menu.js";
 
-export type ChatConfiguration = {
+export type TelegramChatConfiguration = {
     chat_id: number,
     announcements: {
         enabled: "Chat" | "Channel" | "Disabled",
@@ -18,27 +18,30 @@ export type ChatConfiguration = {
     }
 };
 
+export type DiscordChannelConfiguration = {
+    guild_id: string,
+    enable_announcements: boolean,
+    announcement_channels: {
+        channel_id: string,
+        ping_mode: "everyone" | "role" | "disabled",
+        ping_role_id: string,
+    }
+}
+
 export type SystemData = {
     telegram: {
-        trusted_chat: ChatConfiguration[],
+        trusted_chat: TelegramChatConfiguration[],
         banned_user_ids: number[]
     }
     discord: {
-        trusted_server: {
-            server_id: number,
-            enable_announcements: boolean 
-            announcement_channels: {
-                channel_id: string,
-                pin_everyone: boolean
-            }
-        }[]
+        trusted_server: DiscordChannelConfiguration[]
     },
     saved_meets: number
 }
 
 export type DiscordUser = {
     username: string,
-    snowflake_id: number
+    snowflake_id: string
 }
 
 export type TelegramUser = {
@@ -82,7 +85,11 @@ export type Meet = {
                 } | undefined
                 type: "groupchat" | "channel"
             }[],
-            discord: any[]
+            discord: {
+                message_id: string,
+                channel_id: string,
+                guild_id: string
+            }[]
         }
     }
     meet_name: string,
@@ -343,6 +350,8 @@ export class MeetManager extends EventEmitter<{
         let raw_meet = JadeStruct.toJadeStruct(meet).convertToNodeJSBuffer();
         
         await this.database.writeData(raw_meet, meet.meet_id, `Meet #${meet.meet_id}`);
+
+        this.fireEvent("update_meet", meet);
     }
 
     async delete_meet(meet_index: number){
