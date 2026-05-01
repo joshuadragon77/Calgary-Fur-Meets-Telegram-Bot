@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import * as console from "../consolescript.js"
 import type { JadeStruct } from "../jadestruct.js";
 import { MeetManager, type DiscordChannelConfiguration, type DiscordUser, type Meet, type TelegramUser } from "../utils/meet_manager.js";
-import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, ChannelSelectMenuBuilder, ChatInputCommandInteraction, CheckboxBuilder, Client, Collection, ComponentType, ContainerBuilder, EmbedBuilder, GatewayIntentBits, InteractionContextType, LabelBuilder, Message, MessageFlags, ModalBuilder, ModalSubmitInteraction, PermissionFlagsBits, REST, RoleSelectMenuBuilder, Routes, SlashCommandBuilder, SlashCommandStringOption, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TextChannel, TextDisplayBuilder, TextDisplayComponent, TextInputBuilder, TextInputStyle, type Interaction, type RESTPostAPIChatInputApplicationCommandsJSONBody, type SlashCommandOptionsOnlyBuilder } from "discord.js";
+import { ActionRowBuilder, ActivityType, AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, ChannelSelectMenuBuilder, ChatInputCommandInteraction, CheckboxBuilder, Client, Collection, ComponentType, ContainerBuilder, EmbedBuilder, GatewayIntentBits, InteractionContextType, LabelBuilder, Message, MessageFlags, ModalBuilder, ModalSubmitInteraction, PermissionFlagsBits, REST, RoleSelectMenuBuilder, Routes, SlashCommandBuilder, SlashCommandStringOption, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TextChannel, TextDisplayBuilder, TextDisplayComponent, TextInputBuilder, TextInputStyle, type Interaction, type RESTPostAPIChatInputApplicationCommandsJSONBody, type SlashCommandOptionsOnlyBuilder } from "discord.js";
 import { format_date } from "../utils/units.js";
 import { truncate } from "fs";
 
@@ -12,6 +12,11 @@ export class DiscordHandler{
     private meet_manager;
     private discord_bot_token: string;
     private discord_client_id: string;
+
+    private modals = new Collection<string, {
+        data: ModalBuilder,
+        execute: (interaction: ModalSubmitInteraction)=>(Promise<void>)
+    }>();
 
     public constructor(discord_bot_token: string, discord_client_id: string, meet_manager: MeetManager){
         this.discord_bot = new Client({
@@ -122,30 +127,37 @@ export class DiscordHandler{
         }
 
         let contextual_text = "";
+        let short = "";
 
         switch(attendance_status){
             case "accepted":{
                 contextual_text = "accepted";
+                short = "✅ Accepted";
                 break;
             }
             case "ride":{
                 contextual_text = "put up a request for a ride";
+                short = "🚘 Ride Needed";
                 break;
             }
             case "maybe":{
                 contextual_text = "said maybe";
+                short = "🤔 Maybe";
                 break;
             }
             case "maybenot":{
                 contextual_text = "said maybe not";
+                short = "😔 Maybe Not";
                 break;
             }
             case "notinterested":{
                 contextual_text = "said weren't interested";
+                short = "💔 Not Interested";
                 break;
             }
             case "declined":{
                 contextual_text = "declined";
+                short = "❌ Declined";
                 break;
             }
         }
@@ -166,10 +178,9 @@ export class DiscordHandler{
                 break;
             }
         }
-        interaction.reply({
-            content: response,
-            flags: MessageFlags.Ephemeral
-        });
+
+        interaction.reply(response);
+
     }
 
     create_notification_from_meet = (meet: Meet, guild_configuration: DiscordChannelConfiguration)=>{
@@ -262,10 +273,10 @@ export class DiscordHandler{
 
             if (attendee.user_type == "Telegram"){
                 let telegram_user = attendee.user as TelegramUser;
-                list.push(`[@${telegram_user.username || truncate(telegram_user.full_name)} (➤)](https://t.me/${telegram_user.username})`);
+                list.push(`<:telegram_logo:1499302521670467644>[${telegram_user.username || truncate(telegram_user.full_name)}](https://t.me/${telegram_user.username})`);
             }else{
                 let discord_user = attendee.user as DiscordUser;
-                list.push(`<@${discord_user.snowflake_id}>`);
+                list.push(`<:discord_logo:1499303188124143626><@${discord_user.snowflake_id}>`);
             }
         }
 
@@ -308,7 +319,7 @@ At [${meet.meet_location.name}](${(()=>{
                 return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(meet_location.name)}`;
             }
         })()})
-Hosted by [@${meet.planner.telegram}](https://t.me/${meet.planner.telegram})
+Hosted by <:telegram_logo:1499302521670467644>[${meet.planner.telegram}](https://t.me/${meet.planner.telegram})
 
 *${meet.meet_description}*`,
                     type: ComponentType.TextDisplay
@@ -326,94 +337,83 @@ Hosted by [@${meet.planner.telegram}](https://t.me/${meet.planner.telegram})
                     type: ComponentType.Separator
                 },
                 {
-                    components: [
-                        {
-                            content: `__✅ Coming (#${text_attendance_list.accepted.length}):__ ${text_attendance_list.accepted.join(", ")}`,
-                            type: ComponentType.TextDisplay
-                        },
-                    ],
-                    accessory: {
-                        custom_id: `accepted_${meet.meet_id}`,
-                        label: "✅ Coming",
-                        style: ButtonStyle.Primary,
-                        type: ComponentType.Button
-                    },
-                    type: ComponentType.Section
+                    content: `__✅ Coming (#${text_attendance_list.accepted.length}):__ ${text_attendance_list.accepted.join(", ")}`,
+                    type: ComponentType.TextDisplay
+                },
+                {
+                    content: `__🚘 Ride needed (#${text_attendance_list.need_car.length}):__ ${text_attendance_list.need_car.join(", ")}`,
+                    type: ComponentType.TextDisplay
+                },
+                {
+                    content: `__🤔 Maybe: (#${text_attendance_list.maybe.length}):__ ${text_attendance_list.maybe.join(", ")}`,
+                    type: ComponentType.TextDisplay
+                },
+                {
+                    content: `__😔 Maybe no: (#${text_attendance_list.maybe_not.length}):__ ${text_attendance_list.maybe_not.join(", ")}`,
+                    type: ComponentType.TextDisplay
+                },
+                {
+                    content: `__❌ Not coming: (#${text_attendance_list.declined.length}):__ ${text_attendance_list.declined.join(", ")}`,
+                    type: ComponentType.TextDisplay
+                },
+                {
+                    content: `__💔 Not interested: (#${text_attendance_list.not_interested.length}):__ ${text_attendance_list.not_interested.join(", ")}`,
+                    type: ComponentType.TextDisplay
+                },
+                {
+                    divider: true,
+                    type: ComponentType.Separator
                 },
                 {
                     components: [
                         {
-                            content: `__🚘 Ride needed (#${text_attendance_list.need_car.length}):__ ${text_attendance_list.need_car.join(", ")}`,
-                            type: ComponentType.TextDisplay
+                            custom_id: `accepted_${meet.meet_id}`,
+                            label: "✅ Coming",
+                            style: ButtonStyle.Success,
+                            type: ComponentType.Button
+                        },
+                        {
+                            custom_id: `ride_${meet.meet_id}`,
+                            label: "🚘 Ride needed",
+                            style: ButtonStyle.Success,
+                            type: ComponentType.Button
                         },
                     ],
-                    accessory: {
-                        custom_id: `ride_${meet.meet_id}`,
-                        label: "🚘 Ride needed",
-                        style: ButtonStyle.Primary,
-                        type: ComponentType.Button
-                    },
-                    type: ComponentType.Section
+                    type: ComponentType.ActionRow
                 },
                 {
                     components: [
                         {
-                            content: `__🤔 Maybe: (#${text_attendance_list.maybe.length}):__ ${text_attendance_list.maybe.join(", ")}`,
-                            type: ComponentType.TextDisplay
+                            custom_id: `maybe_${meet.meet_id}`,
+                            label: "🤔 Maybe",
+                            style: ButtonStyle.Primary,
+                            type: ComponentType.Button
                         },
+                        {
+                            custom_id: `maybenot_${meet.meet_id}`,
+                            label: "😔 Maybe no",
+                            style: ButtonStyle.Primary,
+                            type: ComponentType.Button
+                        }
                     ],
-                    accessory: {
-                        custom_id: `maybe_${meet.meet_id}`,
-                        label: "🤔 Maybe",
-                        style: ButtonStyle.Primary,
-                        type: ComponentType.Button
-                    },
-                    type: ComponentType.Section
+                    type: ComponentType.ActionRow
                 },
                 {
                     components: [
                         {
-                            content: `__😔 Maybe no: (#${text_attendance_list.maybe_not.length}):__ ${text_attendance_list.maybe_not.join(", ")}`,
-                            type: ComponentType.TextDisplay
+                            custom_id: `declined_${meet.meet_id}`,
+                            label: "❌ Not coming",
+                            style: ButtonStyle.Danger,
+                            type: ComponentType.Button
                         },
-                    ],
-                    accessory: {
-                        custom_id: `maybenot_${meet.meet_id}`,
-                        label: "😔 Maybe no",
-                        style: ButtonStyle.Primary,
-                        type: ComponentType.Button
-                    },
-                    type: ComponentType.Section
-                },
-                {
-                    components: [
                         {
-                            content: `__❌ Not coming: (#${text_attendance_list.declined.length}):__ ${text_attendance_list.declined.join(", ")}`,
-                            type: ComponentType.TextDisplay
-                        },
+                            custom_id: `notinterested_${meet.meet_id}`,
+                            label: "💔 Not interested",
+                            style: ButtonStyle.Danger,
+                            type: ComponentType.Button
+                        }
                     ],
-                    accessory: {
-                        custom_id: `declined_${meet.meet_id}`,
-                        label: "❌ Not coming",
-                        style: ButtonStyle.Primary,
-                        type: ComponentType.Button
-                    },
-                    type: ComponentType.Section
-                },
-                {
-                    components: [
-                        {
-                            content: `__💔 Not interested: (#${text_attendance_list.not_interested.length}):__ ${text_attendance_list.not_interested.join(", ")}`,
-                            type: ComponentType.TextDisplay
-                        },
-                    ],
-                    accessory: {
-                        custom_id: `notinterested_${meet.meet_id}`,
-                        label: "💔 Not interested",
-                        style: ButtonStyle.Primary,
-                        type: ComponentType.Button
-                    },
-                    type: ComponentType.Section
+                    type: ComponentType.ActionRow
                 },
                 {
                     divider: true,
@@ -503,10 +503,7 @@ Hosted by [@${meet.planner.telegram}](https://t.me/${meet.planner.telegram})
             execute: (interaction: ChatInputCommandInteraction)=>(Promise<void>)
         }>();
         
-        let modals = new Collection<string, {
-            data: ModalBuilder,
-            execute: (interaction: ModalSubmitInteraction)=>(Promise<void>)
-        }>();
+        let modals = this.modals;
 
         let update_commands = async ()=>{
             let commands_for_discord: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [];
@@ -573,6 +570,22 @@ Hosted by [@${meet.planner.telegram}](https://t.me/${meet.planner.telegram})
                 }
                     
                 interaction.reply("⛔ Unable to verify this Diwscord Server!");
+            }
+        });
+        
+        modals.set("discord_meet_status", {
+            data: new ModalBuilder({
+                title: "⚠️ You have accepted the Meet Invitiation!",
+                custom_id: "discord_meet_status",
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: ""
+                    }
+                ]
+            }),
+            execute: async (interaction)=>{
+                interaction.deferUpdate()
             }
         });
 
@@ -755,6 +768,32 @@ Hosted by [@${meet.planner.telegram}](https://t.me/${meet.planner.telegram})
         });
 
         await update_commands();
+
+        setInterval(async () => {
+
+            let meets = await this.meet_manager.get_meets();
+
+            let upcoming_meets = 0;
+            let earliest_day = 0;
+
+            for (let meet of meets){
+                if (meet.meet_date.getTime() >= Date.now()){
+                    upcoming_meets += 1;
+                }
+            }
+
+            this.discord_bot.user!.setPresence({
+                activities: [
+                    {
+                        name: `There are ${upcoming_meets} upcoming meets`,
+                        url: "https://t.me/calgaryfurmeet",
+                        state: "merp",
+                        type: ActivityType.Watching
+                    },
+                ],
+                status: "online"
+            });
+        }, 3000);
 
 
     }
