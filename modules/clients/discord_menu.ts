@@ -179,7 +179,10 @@ export class DiscordHandler{
             }
         }
 
-        interaction.reply(response);
+        interaction.reply({
+            content: response,
+            flags: MessageFlags.Ephemeral
+        });
 
     }
 
