@@ -72,12 +72,31 @@ export class DiscordHandler{
 
                     let container_display = this.create_component_from_meet(meet, trusted_discord_server);
 
-                    await message.edit({
-                        content: "",
-                        // embeds: [embed_builder],
-                        components: [container_display],
-                        flags: MessageFlags.IsComponentsV2
-                    })
+                    
+                    let attachment = meet.attached_meet_media ? [new AttachmentBuilder(meet.attached_meet_media).setName("meet_media.jpg")] : [];
+
+                    
+                    if (
+                        attachment && (
+                            message.attachments.size == 0 ||
+                            message.attachments.at(0)!.size != meet.attached_meet_media!.byteLength
+                        )
+                    ){
+                        await message.edit({
+                            content: "",
+                            files: attachment,
+                            // embeds: [embed_builder],
+                            components: [container_display],
+                            flags: MessageFlags.IsComponentsV2
+                        });
+                    }else{
+                        await message.edit({
+                            content: "",
+                            // embeds: [embed_builder],
+                            components: [container_display],
+                            flags: MessageFlags.IsComponentsV2
+                        });
+                    }
                 }
             }
             catch(er){
