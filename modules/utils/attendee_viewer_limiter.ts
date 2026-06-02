@@ -209,7 +209,11 @@ export class AttendeeViewerLimiter{
                 cleared = false;
                 finalized_list.push(meet_attendee);
 
-                remaining_characters -= (lazy_length_mapping.get(meet_attendee) || meet_attendee.length) + 2;
+                if (view_type == "Discord"){
+                    remaining_characters -= meet_attendee.length + 2;
+                }else{
+                    remaining_characters -= (lazy_length_mapping.get(meet_attendee) || meet_attendee.length) + 2;
+                }
 
                 if (meet_attendee.length >= remaining_characters){
                     break;

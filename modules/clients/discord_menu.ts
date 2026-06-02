@@ -418,7 +418,7 @@ Hosted by <:telegram_logo:1499302521670467644>[${meet.planner.telegram}](https:/
 
         let text_attendance_list_finalized_raw = AttendeeViewerLimiter.generate_meet_view(
             meet, 
-            2000 - used_characters,
+            4000 - used_characters,
             "Discord"
         );
 
@@ -438,6 +438,14 @@ Hosted by <:telegram_logo:1499302521670467644>[${meet.planner.telegram}](https:/
         if (!meet.attached_meet_media){
             container_display.spliceComponents(3, 1);
         }
+
+        // determine_used_characters(attendance_components.accepted.content);
+        // determine_used_characters(attendance_components.need_car.content);
+        // determine_used_characters(attendance_components.maybe.content);
+        // determine_used_characters(attendance_components.maybe_not.content);
+        // determine_used_characters(attendance_components.declined.content);
+        // determine_used_characters(attendance_components.not_interested.content);
+        // console.log(used_characters);
 
         return container_display;
     }
