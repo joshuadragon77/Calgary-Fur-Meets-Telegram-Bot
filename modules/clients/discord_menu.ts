@@ -2,9 +2,10 @@ import { createHash } from "crypto";
 import * as console from "../consolescript.js"
 import type { JadeStruct } from "../jadestruct.js";
 import { MeetManager, type DiscordChannelConfiguration, type DiscordUser, type Meet, type TelegramUser } from "../utils/meet_manager.js";
-import { ActionRowBuilder, ActivityType, AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, ChannelSelectMenuBuilder, ChatInputCommandInteraction, CheckboxBuilder, Client, Collection, ComponentType, ContainerBuilder, EmbedBuilder, GatewayIntentBits, InteractionContextType, LabelBuilder, Message, MessageFlags, ModalBuilder, ModalSubmitInteraction, PermissionFlagsBits, REST, RoleSelectMenuBuilder, Routes, SlashCommandBuilder, SlashCommandStringOption, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TextChannel, TextDisplayBuilder, TextDisplayComponent, TextInputBuilder, TextInputStyle, type Interaction, type RESTPostAPIChatInputApplicationCommandsJSONBody, type SlashCommandOptionsOnlyBuilder } from "discord.js";
+import { ActionRowBuilder, ActivityType, AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, ChannelSelectMenuBuilder, ChatInputCommandInteraction, CheckboxBuilder, Client, Collection, ComponentBuilder, ComponentType, ContainerBuilder, EmbedBuilder, GatewayIntentBits, InteractionContextType, LabelBuilder, Message, MessageFlags, ModalBuilder, ModalSubmitInteraction, PermissionFlagsBits, REST, RoleSelectMenuBuilder, Routes, SlashCommandBuilder, SlashCommandStringOption, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TextChannel, TextDisplayBuilder, TextDisplayComponent, TextInputBuilder, TextInputStyle, type APIComponentInContainer, type Interaction, type RESTPostAPIChatInputApplicationCommandsJSONBody, type SlashCommandOptionsOnlyBuilder } from "discord.js";
 import { format_date } from "../utils/units.js";
 import { truncate } from "fs";
+import { AttendeeViewerLimiter } from "../utils/attendee_viewer_limiter.js";
 
 export class DiscordHandler{
 
@@ -243,14 +244,6 @@ export class DiscordHandler{
             "🐶", "🦊", "🐱", "🦊", "🐺", "🐯", "🫎", "🐻", "🦇", "🐼", "🦅"
         ][random_byte];
 
-        let text_attendance_list = {
-            accepted: [] as string[],
-            need_car: [] as string[],
-            maybe: [] as string[],
-            maybe_not: [] as string[],
-            not_interested: [] as string[],
-            declined: [] as string[],
-        }
 
         let attendance_list = meet.attendance.sort((a, b)=>{
             return (a.user.username || "").localeCompare(b .user.username|| "");
@@ -263,50 +256,26 @@ export class DiscordHandler{
                 return str;
             }
         }
-        
-        for (let attendee of attendance_list){
-            let list: string[];
-            switch(attendee.attendance_status){
-                case "accepted":{
-                    list = text_attendance_list.accepted;
-                    break;
-                }
-                case "ride":{
-                    list = text_attendance_list.need_car;
-                    break;
-                }
-                case "maybe":{
-                    list = text_attendance_list.maybe;
-                    break;
-                }
-                case "maybenot":{
-                    list = text_attendance_list.maybe_not;
-                    break;
-                }
-                case "notinterested":{
-                    list = text_attendance_list.not_interested;
-                    break;
-                }
-                case "declined":{
-                    list = text_attendance_list.declined;
-                    break;
-                }
-            }
 
-            if (attendee.user_type == "Telegram"){
-                let telegram_user = attendee.user as TelegramUser;
-                list.push(`<:telegram_logo:1499302521670467644>[${telegram_user.username || truncate(telegram_user.full_name)}](https://t.me/${telegram_user.username})`);
-            }else{
-                let discord_user = attendee.user as DiscordUser;
-                list.push(`<:discord_logo:1499303188124143626><@${discord_user.snowflake_id}>`);
-            }
+        let used_characters = 0;
+
+        let determine_used_characters = (str: string)=>{
+            used_characters += str.length;
+            return str;
+        }
+    
+        let attendance_components = {
+            accepted: undefined as APIComponentInContainer | undefined,
+            need_car: undefined as APIComponentInContainer | undefined,
+            maybe: undefined as APIComponentInContainer | undefined,
+            maybe_not: undefined as APIComponentInContainer | undefined,
+            not_interested: undefined as APIComponentInContainer | undefined,
+            declined: undefined as APIComponentInContainer | undefined,
         }
 
-        let container_display = new ContainerBuilder({
-            accent_color: 0x00AAFF,
-            components: [
+        let components: APIComponentInContainer[] = [
                 {
-                    content: `**[New Furmeet Announcement!](https://t.me/calgaryfurmeet)** ${(()=>{
+                    content: determine_used_characters(`**[New Furmeet Announcement!](https://t.me/calgaryfurmeet)** ${(()=>{
                         switch (guild_configuration.announcement_channels.ping_mode){
                             case "everyone":{
                                 return "@everyone";
@@ -322,7 +291,7 @@ export class DiscordHandler{
                                 break;
                             }
                         }
-                    })()}`,
+                    })()}`),
                     type: ComponentType.TextDisplay
                 },
                 {
@@ -330,7 +299,7 @@ export class DiscordHandler{
                     type: ComponentType.Separator
                 },
                 {
-                    content: `**${random_icon} ${meet.meet_name}**
+                    content: determine_used_characters(`**${random_icon} ${meet.meet_name}**
 On ${format_date(meet.meet_date)}
 At [${meet.meet_location.name}](${(()=>{
             let { meet_location } = meet;
@@ -343,7 +312,7 @@ At [${meet.meet_location.name}](${(()=>{
         })()})
 Hosted by <:telegram_logo:1499302521670467644>[${meet.planner.telegram}](https://t.me/${meet.planner.telegram})
 
-*${meet.meet_description}*`,
+*${meet.meet_description}*`),
                     type: ComponentType.TextDisplay
                 },
                 {
@@ -358,28 +327,28 @@ Hosted by <:telegram_logo:1499302521670467644>[${meet.planner.telegram}](https:/
                     divider: true,
                     type: ComponentType.Separator
                 },
-                {
-                    content: `__✅ Coming (#${text_attendance_list.accepted.length}):__ ${text_attendance_list.accepted.join(", ")}`,
+                attendance_components.accepted = {
+                    content: `__✅ Coming__`,
                     type: ComponentType.TextDisplay
                 },
-                {
-                    content: `__🚘 Ride needed (#${text_attendance_list.need_car.length}):__ ${text_attendance_list.need_car.join(", ")}`,
+                attendance_components.need_car = {
+                    content: `__🚘 Ride needed__`,
                     type: ComponentType.TextDisplay
                 },
-                {
-                    content: `__🤔 Maybe: (#${text_attendance_list.maybe.length}):__ ${text_attendance_list.maybe.join(", ")}`,
+                attendance_components.maybe = {
+                    content: `__🤔 Maybe__`,
                     type: ComponentType.TextDisplay
                 },
-                {
-                    content: `__😔 Maybe no: (#${text_attendance_list.maybe_not.length}):__ ${text_attendance_list.maybe_not.join(", ")}`,
+                attendance_components.maybe_not = {
+                    content: `__😔 Maybe no__`,
                     type: ComponentType.TextDisplay
                 },
-                {
-                    content: `__❌ Not coming: (#${text_attendance_list.declined.length}):__ ${text_attendance_list.declined.join(", ")}`,
+                attendance_components.declined = {
+                    content: `__❌ Not coming__`,
                     type: ComponentType.TextDisplay
                 },
-                {
-                    content: `__💔 Not interested: (#${text_attendance_list.not_interested.length}):__ ${text_attendance_list.not_interested.join(", ")}`,
+                attendance_components.not_interested = {
+                    content: `__💔 Not interested__`,
                     type: ComponentType.TextDisplay
                 },
                 {
@@ -442,11 +411,29 @@ Hosted by <:telegram_logo:1499302521670467644>[${meet.planner.telegram}](https:/
                     type: ComponentType.Separator
                 },
                 {
-                    content:  `-# Last updated: ${format_date(new Date())}`,
+                    content:  determine_used_characters(`-# Last updated: ${format_date(new Date())}`),
                     type: ComponentType.TextDisplay
                 },
-            ]
+            ];
+
+        let text_attendance_list_finalized_raw = AttendeeViewerLimiter.generate_meet_view(
+            meet, 
+            2000 - used_characters,
+            "Discord"
+        );
+
+        attendance_components.accepted.content = text_attendance_list_finalized_raw.accepted;
+        attendance_components.need_car.content = text_attendance_list_finalized_raw.need_car;
+        attendance_components.maybe.content = text_attendance_list_finalized_raw.maybe;
+        attendance_components.maybe_not.content = text_attendance_list_finalized_raw.maybe_not;
+        attendance_components.declined.content = text_attendance_list_finalized_raw.declined;
+        attendance_components.not_interested.content = text_attendance_list_finalized_raw.not_interested;
+
+        let container_display = new ContainerBuilder({
+            accent_color: 0x00AAFF,
+            components: components
         });
+        
 
         if (!meet.attached_meet_media){
             container_display.spliceComponents(3, 1);

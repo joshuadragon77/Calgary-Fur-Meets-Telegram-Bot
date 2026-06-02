@@ -8,6 +8,7 @@ import { get } from "https";
 import { MeetManager, type TelegramChatConfiguration, type DiscordUser, type Meet, type MeetAttendee, type TelegramUser } from "../utils/meet_manager.js";
 import { format_date } from "../utils/units.js";
 import { createHash } from "crypto";
+import { AttendeeViewerLimiter } from "../utils/attendee_viewer_limiter.js";
 
 type TelegramUserStateMachine = {
     initialized_message: Message
@@ -3091,6 +3092,14 @@ class Furmeet_PostManager{
 // 🚘
 // 👋
 // ❌
+
+        let used_characters = 0;
+
+        let determine_used_characters = (str: string)=>{
+            used_characters += str.length;
+            return str;
+        }
+
         let random_char = createHash("sha256").update(meet.meet_name).digest("binary").charCodeAt(0);
 
         let random_byte = random_char % 11; 
@@ -3099,7 +3108,7 @@ class Furmeet_PostManager{
             "🐶", "🦊", "🐱", "🦊", "🐺", "🐯", "🫎", "🐻", "🦇", "🐼", "🦅"
         ][random_byte];
 
-        return `${random_icon} <b><u>${meet.meet_name}</u></b>\n` +
+        let meet_body_builder = [determine_used_characters(`${random_icon} <b><u>${meet.meet_name}</u></b>\n` +
             `On <b>${format_date(meet.meet_date)}</b>${(()=>{
                 if (meet.meet_date.getTime() < Date.now()){
                     return "\n<b><u>Note: This meet has concluded and will no longer happen. You cannot mark whether you want to participate or not at this point. ;-;</u></b>";
@@ -3125,103 +3134,26 @@ class Furmeet_PostManager{
                 
                 return hosted_links.join(",");
             })()}\n\n` +
-            `<i>${meet.meet_description}</i>\n\n` + 
-            `${can_be_auto_updated ? (()=>{
-                let text_attendance_list = {
-                    accepted: [] as string[],
-                    need_car: [] as string[],
-                    maybe: [] as string[],
-                    maybe_not: [] as string[],
-                    not_interested: [] as string[],
-                    declined: [] as string[],
-                }
-
-                let attendance_list = meet.attendance.sort((a, b)=>{
-                    return (a.user.username || "").localeCompare(b .user.username|| "");
-                });
-
-                // <a href="https://discord.com/users/317118157711998976/">thejades</a>
-
-                for (let attendee of attendance_list){
-                    let list: string[];
-                    switch(attendee.attendance_status){
-                        case "accepted":{
-                            list = text_attendance_list.accepted;
-                            break;
-                        }
-                        case "ride":{
-                            list = text_attendance_list.need_car;
-                            break;
-                        }
-                        case "maybe":{
-                            list = text_attendance_list.maybe;
-                            break;
-                        }
-                        case "maybenot":{
-                            list = text_attendance_list.maybe_not;
-                            break;
-                        }
-                        case "notinterested":{
-                            list = text_attendance_list.not_interested;
-                            break;
-                        }
-                        case "declined":{
-                            list = text_attendance_list.declined;
-                            break;
-                        }
-                    }
-
-                    if (attendee.user_type == "Telegram"){
-                        let telegram_user = attendee.user as TelegramUser;
-                        list.push(`<a href="tg://user?id=${telegram_user.user_id}">@${telegram_user.username || truncate(telegram_user.full_name)}</a>`);
-                    }else{
-                        let discord_user = attendee.user as DiscordUser;
-                        list.push(`<a href="https://discord.com/users/${discord_user.snowflake_id}">🎮@${discord_user.username}</a>`);
-                    }
-                }
-
-                let attendance_text = "";
-
-                if (text_attendance_list.accepted.length > 0){
-                    attendance_text += `✅ Attendees (#${text_attendance_list.accepted.length}): ${text_attendance_list.accepted.join(", ")}\n`;
-                }else{
-                    attendance_text += "";
-                }
-
-                if (text_attendance_list.need_car.length > 0){
-                    attendance_text += `🚘 Need a ride (#${text_attendance_list.need_car.length}): ${text_attendance_list.need_car.join(", ")}\n`;
-                }else{
-                    attendance_text += "";
-                }
-
-                if (text_attendance_list.maybe.length > 0){
-                    attendance_text += `🤔 Maybe (#${text_attendance_list.maybe.length}): ${text_attendance_list.maybe.join(", ")}\n`;
-                }else{
-                    attendance_text += "";
-                }
-
-                if (text_attendance_list.maybe_not.length > 0){
-                    attendance_text += `😔 Maybe not (#${text_attendance_list.maybe_not.length}): ${text_attendance_list.maybe_not.join(", ")}\n`;
-                }else{
-                    attendance_text += "";
-                }
-
-                if (text_attendance_list.not_interested.length > 0){
-                    attendance_text += `💔 Not interested (#${text_attendance_list.not_interested.length}): ${text_attendance_list.not_interested.join(", ")}\n`;
-                }else{
-                    attendance_text += "";
-                }
-
-                if (text_attendance_list.declined.length > 0){
-                    attendance_text += `❌ Cannot come (#${text_attendance_list.declined.length}): ${text_attendance_list.declined.join(", ")}\n`;
-                }else{
-                    attendance_text += "";
-                }
-
-                return attendance_text;
-            })() : ""}\n` +
+            `<i>${meet.meet_description}</i>\n\n`),
+            "",
             // Might cause an issue if the person repewats it again
-            `<i>Last updated: ${format_date(new Date())}</i>`;
+            determine_used_characters(`<i>Last updated: ${format_date(new Date())}</i>`)];
+
+        let text_attendance_list_finalized_raw = AttendeeViewerLimiter.generate_meet_view(
+            meet, 
+            (meet.attached_meet_media ? 1024 : 6214206999999999) - used_characters,
+            "Telegram"
+        );
+
+        meet_body_builder[1] = 
+            `${text_attendance_list_finalized_raw.accepted ? `${text_attendance_list_finalized_raw.accepted}\n` : ""}` +
+            `${text_attendance_list_finalized_raw.need_car ? `${text_attendance_list_finalized_raw.need_car}\n` : ""}` +
+            `${text_attendance_list_finalized_raw.maybe ? `${text_attendance_list_finalized_raw.maybe}\n` : ""}` +
+            `${text_attendance_list_finalized_raw.maybe_not ? `${text_attendance_list_finalized_raw.maybe_not}\n` : ""}` +
+            `${text_attendance_list_finalized_raw.not_interested ? `${text_attendance_list_finalized_raw.not_interested}\n` : ""}` +
+            `${text_attendance_list_finalized_raw.declined ? `${text_attendance_list_finalized_raw.declined}\n` : ""}`;
+        
+        return meet_body_builder.join("");
     }
 }
 
