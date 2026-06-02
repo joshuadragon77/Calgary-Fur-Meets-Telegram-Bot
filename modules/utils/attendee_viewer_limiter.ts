@@ -29,6 +29,8 @@ export class AttendeeViewerLimiter{
             return (a.user.username || "").localeCompare(b .user.username|| "");
         });
 
+        let lazy_length_mapping = new Map<string, number>();
+
         for (let attendee of attendance_list){
             let list: string[];
 
@@ -64,12 +66,19 @@ export class AttendeeViewerLimiter{
                     switch(attendee.user_type){
                         case "Telegram":{
                             let telegram_user = attendee.user as TelegramUser;
-                            list.push(`<a href="tg://user?id=${telegram_user.user_id}">@${telegram_user.username || truncate(telegram_user.full_name)}</a>`);
+                            let content = `<a href="tg://user?id=${telegram_user.user_id}">@${telegram_user.username || truncate(telegram_user.full_name)}</a>`;
+                            list.push(content);
+
+                            lazy_length_mapping.set(content, `@${telegram_user.username || truncate(telegram_user.full_name)}`.length);
+                            
                             break;
                         }
                         case "Discord":{
                             let discord_user = attendee.user as DiscordUser;
-                            list.push(`<a href="https://discord.com/users/${discord_user.snowflake_id}">🎮@${discord_user.username}</a>`);
+                            let content = `<a href="https://discord.com/users/${discord_user.snowflake_id}">🎮@${discord_user.username}</a>`;
+                            list.push(content);
+
+                            lazy_length_mapping.set(content, `🎮@${discord_user.username}`.length);
                             break;
                         }
                     }
@@ -79,12 +88,19 @@ export class AttendeeViewerLimiter{
                     switch(attendee.user_type){
                         case "Telegram":{
                             let telegram_user = attendee.user as TelegramUser;
-                            list.push(`<:telegram_logo:1499302521670467644>[${telegram_user.username || truncate(telegram_user.full_name)}](https://t.me/${telegram_user.username})`);
+                            let content = `<:telegram_logo:1499302521670467644>[${telegram_user.username || truncate(telegram_user.full_name)}](https://t.me/${telegram_user.username})`;
+                            list.push(content);
+
+                            lazy_length_mapping.set(content, `${telegram_user.username || truncate(telegram_user.full_name)}`.length);
                             break;
                         }
                         case "Discord":{
                             let discord_user = attendee.user as DiscordUser;
-                            list.push(`<:discord_logo:1499303188124143626><@${discord_user.snowflake_id}>`);
+                            let content = `<:discord_logo:1499303188124143626><@${discord_user.snowflake_id}>`;
+                            list.push(content);
+
+                            lazy_length_mapping.set(content, `@${discord_user.username}`.length);
+
                             break;
                         }
                     }
@@ -193,7 +209,7 @@ export class AttendeeViewerLimiter{
                 cleared = false;
                 finalized_list.push(meet_attendee);
 
-                remaining_characters -= meet_attendee.length + 2;
+                remaining_characters -= (lazy_length_mapping.get(meet_attendee) || meet_attendee.length) + 2;
 
                 if (meet_attendee.length >= remaining_characters){
                     break;
