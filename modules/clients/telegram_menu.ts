@@ -2322,6 +2322,9 @@ class FurmeetManager_GenMenu{
                     await this.menu_send_status_message(context, `You have set the location of this meet to <b>${location_name}</b>.\n` +
                         `This location cannot be looked up from its name and therefore map context features cannot be used.`
                     );
+
+                    user_state_machine.meet_location.location = {latitude: 0, longitude: 0};
+                    user_state_machine.meet_location.address = "";
                 }
 
                 user_state_machine.meet_location.valid = true;
