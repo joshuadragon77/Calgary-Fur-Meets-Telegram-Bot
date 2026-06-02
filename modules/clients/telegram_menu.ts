@@ -3138,10 +3138,11 @@ class Furmeet_PostManager{
             "",
             // Might cause an issue if the person repewats it again
             determine_used_characters(`<i>Last updated: ${format_date(new Date())}</i>`)];
-
+        
+        
         let text_attendance_list_finalized_raw = AttendeeViewerLimiter.generate_meet_view(
             meet, 
-            (meet.attached_meet_media ? 1024 : 6214206999999999) - used_characters,
+            (meet.attached_meet_media ? 1124 : 6214206999999999) - used_characters,
             "Telegram"
         );
 
