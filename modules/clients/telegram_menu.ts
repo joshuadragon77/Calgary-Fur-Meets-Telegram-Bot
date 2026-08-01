@@ -2931,7 +2931,7 @@ class Furmeet_PostManager{
                         let edited_message_media = await this.telegram_bot.api.editMessageMedia(
                             post.chat_id,
                             post.message_id,
-                            InputMediaBuilder.photo(new InputFile(meet.attached_meet_media!))
+                            InputMediaBuilder.photo(new InputFile(meet.attached_meet_media!)),
                         ) as (Update.Edited & Message);
     
                         let photos = edited_message_media.photo!;
@@ -2953,7 +2953,11 @@ class Furmeet_PostManager{
                         );
                     }
                 }
-                
+            }
+            catch(er){
+                console.error(er);
+            };
+            try{
                 switch(post.type){
                     case "channel":{
                         let configuration = {
