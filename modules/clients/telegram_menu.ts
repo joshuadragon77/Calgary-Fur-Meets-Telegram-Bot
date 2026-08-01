@@ -3145,7 +3145,7 @@ class Furmeet_PostManager{
         
         let text_attendance_list_finalized_raw = AttendeeViewerLimiter.generate_meet_view(
             meet, 
-            (meet.attached_meet_media ? 1124 : 6214206999999999) - used_characters,
+            (meet.attached_meet_media ? 1000 : 6214206999999999) - used_characters,
             "Telegram"
         );
 
