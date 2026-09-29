@@ -204,7 +204,6 @@ export class DatabaseRaceAvoider{
             this.database.writeDataQueue(buffer, index, dataName, dataType);
             // console.log(`NEW WRITE: ${index}`);
 
-            console.log(cached_data.cached_data);
 
 
             accept();
@@ -218,7 +217,6 @@ export class DatabaseRaceAvoider{
     
                 cached_data.read_callback.push(()=>{
                     cached_data.time_read = Date.now();
-                    console.log(cached_data.cached_data);
                     accept(cached_data.cached_data!);
                 });
     
