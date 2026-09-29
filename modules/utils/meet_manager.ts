@@ -149,6 +149,134 @@ export type ParameterMeet = {
     attached_meet_media: Buffer | undefined
 }
 
+type ReturnData = {
+    DataName: string,
+    DataType: number,
+    Buffer: Buffer
+};
+
+type DatabaseCache = {
+    cached_data?: ReturnData;
+    
+    reading: boolean
+    time_read: number;
+    read_callback: (()=>(void))[];
+
+
+    time_write: number;
+
+};
+
+// Shotty attempt at using the correct function calls and to avoid race conditions.
+export class DatabaseRaceAvoider{
+
+    private local_cache = new Map<number, DatabaseCache>();
+    private database;
+
+    private obtain_cache(index: number){
+        let cached_data = this.local_cache.get(index);
+
+        if (!cached_data){
+            this.local_cache.set(index, cached_data = {
+                reading: false,
+                time_read: 0,
+                read_callback: [],
+
+                time_write: 0,
+
+            });
+        }
+
+        return cached_data;
+    }
+
+    writeData(buffer: Buffer, index: number, dataName: string = "Unnamed", dataType: number = 0) {
+        return new Promise<void>((accept, reject)=>{
+            let cached_data = this.obtain_cache(index);
+
+            cached_data.cached_data = {
+                Buffer: buffer,
+                DataName: dataName,
+                DataType: dataType
+            };
+
+            cached_data.time_write = Date.now();
+            this.database.writeDataQueue(buffer, index, dataName, dataType);
+            // console.log(`NEW WRITE: ${index}`);
+
+            console.log(cached_data.cached_data);
+
+
+            accept();
+        });
+    }
+    readData(index: number) {
+        return new Promise<ReturnData>((accept, reject)=>{
+            let cached_data = this.obtain_cache(index);
+    
+            if (!cached_data.cached_data){
+    
+                cached_data.read_callback.push(()=>{
+                    cached_data.time_read = Date.now();
+                    console.log(cached_data.cached_data);
+                    accept(cached_data.cached_data!);
+                });
+    
+                if (cached_data.reading == false){
+                    cached_data.reading = true;
+                    
+                    this.database.readData(index).then((data)=>{
+
+                        cached_data.cached_data = data;
+
+                        // console.log(`NEW READ: ${index}`);
+
+                        for (let callback of cached_data.read_callback){
+                            callback();
+                        }
+                        
+                        cached_data.reading = false;
+                        cached_data.read_callback = [];
+                    }).catch((err)=>{
+                        reject(err);
+                        cached_data.reading = false;
+                    });
+
+                }
+            }else{
+                cached_data.time_read = Date.now();
+                console.log(cached_data.cached_data);
+                accept(cached_data.cached_data);
+            }
+        });
+    }
+    open() {
+        return this.database.open();
+    }
+    exists(blockLocation: number) {
+        return this.database.exists(blockLocation);
+    }
+
+
+    constructor(database: LowLevelJadeDB){
+        this.database = database;
+
+        setInterval(() => {
+            for (let key of this.local_cache.keys()){
+                let cached_data = this.local_cache.get(key)!;
+
+                
+                if ((Date.now() - cached_data.time_read) > 10000 && (Date.now() - cached_data.time_write) > 10000 && cached_data.reading == false){
+                    // console.log(`DELETED ${key}`);
+                    this.local_cache.delete(key);
+                }
+            }
+        }, 1000);
+    }
+
+    
+}
+
 export class MeetManager extends EventEmitter<{
     "new_meet": Meet,
     "update_meet": Meet,
@@ -156,7 +284,8 @@ export class MeetManager extends EventEmitter<{
 }>{
 
     private otp_generator = new OneTimePasswordGenerator();
-    private database = new LowLevelJadeDB("./database.db", 4096);
+    private database_proxy = new LowLevelJadeDB("./database.db", 4096);
+    private database = new DatabaseRaceAvoider(this.database_proxy);
     private current_system_data: SystemData = {
         telegram: {
             trusted_chat: [],
