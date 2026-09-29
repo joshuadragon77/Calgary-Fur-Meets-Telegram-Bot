@@ -243,7 +243,6 @@ export class DatabaseRaceAvoider{
                 }
             }else{
                 cached_data.time_read = Date.now();
-                console.log(cached_data.cached_data);
                 accept(cached_data.cached_data);
             }
         });
