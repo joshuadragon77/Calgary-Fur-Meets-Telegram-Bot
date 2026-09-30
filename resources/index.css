@@ -1,0 +1,209 @@
+@font-face {
+    font-family: Recursive;
+    src: url("./fonts/RecMonoCasualNerdFont-Regular.ttf");
+    font-weight: 400;
+}
+@font-face {
+    font-family: Recursive;
+    src: url("./fonts/RecMonoCasualNerdFont-Bold.ttf");
+    font-weight: 700;
+}
+body{
+    font: 700 50px Recursive;
+    padding: 20px;
+    background-color: rgb(134, 134, 209);
+    --container-width: none;
+    --top-bottom-padding: 30px;
+}
+#MainCentreContainer{
+    margin-top: 50px;
+    display: flex;
+    width: 800px;
+    margin-left: calc(50% - 400px)
+}
+#MainCentreContainer>#LeftContainer{
+    flex: 0.5;
+}
+#MainCentreContainer>#RightContainer{
+    flex: 0.5;
+}
+.Container{
+    font-size: 30px;
+    display: block;
+    background-color: black;
+    color: white;
+    padding: 20px;
+    margin: calc(5px);
+    padding-top: calc(30px + var(--top-bottom-padding));
+    padding-bottom: calc(30px + var(--top-bottom-padding));
+    margin-bottom: calc(5px - var(--top-bottom-padding));
+    width: var(--container-width);
+    text-align: center;
+}
+#LeftContainer>.Container{
+    clip-path: polygon(
+        0% var(--top-bottom-padding),
+        100% 0px,
+        100% calc(100% - var(--top-bottom-padding)),
+        0% 100%
+    );
+}
+#RightContainer>.Container{
+    clip-path: polygon(
+        0% 0px,
+        100% var(--top-bottom-padding),
+        100% 100%,
+        0% calc(100% - var(--top-bottom-padding))
+    );
+}
+
+#Contacts{
+    display: flex;
+    margin-top: 20px;
+    font-size: 15px;
+}
+#Contacts>div{
+    border-radius: 100px;
+    padding: 5px;
+    padding-left: 15px;
+    flex: 1;
+    margin-left: 5px;
+    margin-right: 5px;
+    white-space: nowrap;
+    text-align: left;
+}
+#Contacts>.Discord{
+    background-color: #5865f2;
+    color: #e0e3ff;
+}
+#Contacts>.Telegram{
+    background-color: #7ddcde;
+    color: black;
+}
+
+#MeetImage{
+    padding: 0px;
+}
+#MeetImage>.ImageSpacer{
+    text-align: initial;
+}
+#MeetImage>.ImageSpacer>img{
+    /* position: absolute; */
+    display: block;
+    width: 400px;
+}
+
+#Calendar{
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 20px;
+    text-align: left;
+    border: 1px solid white;
+    margin-top: 20px;
+}
+#Calendar>.Row{
+    display: flex;
+}
+#Calendar>.Row>.DateEntry{
+    padding-left: 10px;
+    border: 1px solid white;
+    flex: 1;
+}
+#Calendar>.Row>.DateEntry.Selected{
+    color: black;
+    background-color: white;
+}
+
+#CalendarActions{
+    margin-top: 10px;
+}
+#CalendarActions>div{
+    border-radius: 100px;
+    padding: 5px;
+    padding-left: 15px;
+    margin-top: 10px;
+    margin-left: 5px;
+    margin-right: 5px;
+    white-space: nowrap;
+    text-align: left;
+    font-size: 15px;
+}
+#CalendarActions>div{
+    background-color: rgb(0, 255, 85);
+    color: rgb(10, 10, 29);
+}
+#CalendarActions>.DiscordNotify{
+    background-color: #5865f2;
+    color: #e0e3ff;
+}
+#CalendarActions>.TelegramNotify{
+    background-color: #7ddcde;
+    color: black;
+}
+
+#MeetDescription{
+    font-size: 20px;
+    text-align: left;
+}
+
+#MeetAttendance>#ActionButton{
+    display: flex;
+    font-size: 15px;
+    border-radius: 100px;
+}
+
+#MeetAttendance>#ActionButton{
+    display: flex;
+    font-size: 15px;
+}
+#MeetAttendance>#ActionButton>div{
+    flex: 1;
+}
+#MeetAttendance>#ActionButton>div>div{
+    border-radius: 100px;
+    padding: 5px;
+    padding-left: 15px;
+    margin-top: 10px;
+    margin-left: 5px;
+    margin-right: 5px;
+    white-space: nowrap;
+    text-align: left;
+    position: relative;
+}
+#MeetAttendance>#ActionButton .Accept{
+    background-color: rgb(0, 255, 85);
+    color: rgb(10, 10, 29);
+}
+#MeetAttendance>#ActionButton .Decline{
+    background-color: rgb(255, 0, 85);
+    color: rgb(10, 10, 29);
+}
+#MeetAttendance>#ActionButton .Maybe{
+    background-color: rgb(140, 255, 0);
+    color: rgb(10, 10, 29);
+}
+#MeetAttendance>#ActionButton .MaybeNo{
+    background-color: rgb(255, 166, 0);
+    color: rgb(10, 10, 29);
+}
+#MeetAttendance>#ActionButton .Ride{
+    background-color: rgb(0, 157, 255);
+    color: rgb(10, 10, 29);
+}
+#MeetAttendance>#ActionButton .NotInterested{
+    background-color: rgb(230, 0, 255);
+    color: rgb(10, 10, 29);
+}
+
+#MeetAttendance>#ActionButton>div>div>.Attendees{
+    display: block;
+    /* position: absolute; */
+    right: 20px;
+}
+
+#MeetLocation{
+    font-size: 20px;
+}
+#MeetLocation>iframe{
+    margin-top: 20px;
+}
