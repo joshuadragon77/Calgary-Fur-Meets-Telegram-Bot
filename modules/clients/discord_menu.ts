@@ -749,6 +749,64 @@ Hosted by <:telegram_logo:1499302521670467644>[${meet.planner.telegram}](https:/
                 }
             }
         });
+        
+        commands.set("populate_channel", {
+            data: new SlashCommandBuilder()
+                .setName("populate_channel")
+                .setDescription("Populate the channel with meets. Only run this for initial config.")
+                .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+                .setContexts(InteractionContextType.Guild),
+            execute: async (interaction: ChatInputCommandInteraction)=>{
+
+                let guild_configuration = await this.fetch_guild_configuration(interaction);
+
+                if (guild_configuration){
+                    
+                    let trusted_discord_server = guild_configuration;
+
+                    for (let meet of await this.meet_manager.get_meets()){
+
+                        if (meet.meet_date.getTime() > Date.now() && meet.meet_disabled == false){       
+                            if (trusted_discord_server.enable_announcements && trusted_discord_server.announcement_channels.channel_id){
+                                let channel_id = trusted_discord_server.announcement_channels.channel_id;
+        
+                                let channel = await this.discord_bot.channels.fetch(channel_id) as TextChannel | undefined;
+        
+                                if (channel){
+                                    let notification_text = this.create_notification_from_meet(meet, trusted_discord_server);
+                                    let container_display = this.create_component_from_meet(meet, trusted_discord_server);
+        
+                                    let message = await channel.send({
+                                        content: notification_text
+                                    });
+        
+                                    let attachment = meet.attached_meet_media ? [new AttachmentBuilder(meet.attached_meet_media).setName("meet_media.jpg")] : [];
+        
+                                    await message.edit({
+                                        content: "",
+                                        files: attachment,
+                                        // embeds: [embed_builder],
+                                        components: [container_display],
+                                        flags: MessageFlags.IsComponentsV2
+                                    })
+        
+                                    meet.platform_specifics.tracked_posts.discord.push({
+                                        message_id: message.id,
+                                        channel_id: message.channelId,
+                                        guild_id: trusted_discord_server.guild_id
+                                    });
+        
+                                    await this.meet_manager.set_meet(meet);
+                                }
+                            }
+                        }
+
+                    }
+                }else{
+                    interaction.reply("This Discord Server is untrusted! Cannot run this command.");
+                }
+            }
+        });
 
         this.discord_bot.on("interactionCreate", async (interation)=>{
             if (interation.isChatInputCommand()){
